@@ -171,7 +171,7 @@
         { label: 'Load', items: [['led','LED'],['rgbled','RGB LED'],['buzzer','Buzzer'],['motor','Motor'],['lamp','Lamp']] },
         { label: 'Passive', items: [['resistor','Resistor'],['pot','Potentiometer'],['capacitor','Capacitor'],['inductor','Inductor']] },
         { label: 'Semiconductor', items: [['diode','Diode'],['transistor','Transistor (NPN)'],['ldr','LDR (Photo)']] },
-        { label: 'Display', items: [['sevenseg','7-Segment'],['ic','IC Chip']] },
+        { label: 'Display', items: [['sevenseg','7-Segment'],['ic','IC Chip'],['multimeter','Multimeter']] },
         { label: 'Logic', items: [['arduino','Arduino (visual)']] },
         { label: 'Custom', items: [['custom','⚙ Custom Element Maker']] }
       ];
@@ -254,7 +254,7 @@
         led: '◉', rgbled: '✱', buzzer: '♫', motor: '⌽', lamp: '💡',
         resistor: '⌇', pot: '⊥', capacitor: '☰', inductor: '∿',
         diode: '▷', transistor: 'ⓣ', ldr: '◐',
-        sevenseg: '8', ic: '⬚', arduino: '⬚', wire: '━', custom: '⚙'
+        sevenseg: '8', ic: '⬚', multimeter: '🔬', arduino: '⬚', wire: '━', custom: '⚙'
       };
       return g[type] || '◆';
     },
@@ -548,7 +548,7 @@
         led: 30, rgbled: 36, buzzer: 30, motor: 36, lamp: 30,
         resistor: 40, pot: 40, capacitor: 30, inductor: 40,
         diode: 36, transistor: 36, ldr: 30,
-        sevenseg: 50, ic: 80, arduino: 120
+        sevenseg: 50, ic: 80, multimeter: 60, arduino: 120
       };
       return sizes[type] || 40;
     },
@@ -559,7 +559,7 @@
         led: 18, rgbled: 24, buzzer: 30, motor: 30, lamp: 24,
         resistor: 14, pot: 30, capacitor: 22, inductor: 18,
         diode: 16, transistor: 30, ldr: 24,
-        sevenseg: 70, ic: 50, arduino: 60
+        sevenseg: 70, ic: 50, multimeter: 50, arduino: 60
       };
       return sizes[type] || 24;
     },
@@ -585,6 +585,7 @@
         case 'sevenseg': return { value: '0' };
         case 'ic': return { label: 'IC', pins: 8 };
         case 'arduino': return { label: 'Arduino Uno' };
+        case 'multimeter': return { mode: 'voltage', range: 20, reading: '---' };
         default: return {};
       }
     },
@@ -639,6 +640,9 @@
           return icPins;
         case 'arduino':
           return [[-hw, -10, 'GND'], [-hw, 10, '5V'], [hw, -10, 'D13'], [hw, 10, 'D12']];
+        case 'multimeter':
+          // COM (common) and VΩA (voltage/resistance/current) probes
+          return [[-hw, 0, 'COM'], [hw, 0, 'VΩA']];
         default:
           // Custom type
           if (comp._customType) {
@@ -896,6 +900,18 @@
           bodies.push(makeRect(w, h, '#0e7490'));
           bodies.push(makeText(0, -6, 'Arduino', '#fff'));
           bodies.push(makeText(0, 10, 'Uno R3', '#fff'));
+          break;
+        case 'multimeter':
+          // Dark case with a screen
+          bodies.push(makeRect(w, h, '#1f2937', 6));
+          // Screen
+          bodies.push(makeRect(w * 0.7, h * 0.4, '#0f172a', 2));
+          // Live reading — green 7-seg style
+          var reading = comp.props.reading || '---';
+          var modeLabel = comp.props.mode === 'voltage' ? 'V' : (comp.props.mode === 'resistance' ? 'Ω' : 'A');
+          bodies.push(makeText(0, -h * 0.05, reading + ' ' + modeLabel, '#22c55e', 12));
+          // Brand label
+          bodies.push(makeText(0, h * 0.3, 'MULTIMETER', '#9ca3af', 7));
           break;
         default:
           // Custom type
@@ -1192,6 +1208,14 @@
         html += '<div class="prop-row"><label>Pins</label><input type="number" id="prop-pins" value="' + (comp.props.pins || 8) + '" min="4" max="40" step="2"></div>';
       } else if (comp.type === 'sevenseg') {
         html += '<div class="prop-row"><label>Display</label><input type="text" id="prop-value" value="' + (comp.props.value || '0') + '" maxlength="1"></div>';
+      } else if (comp.type === 'multimeter') {
+        html += '<div class="prop-row"><label>Mode</label><select id="prop-mmmode" style="flex:1;">';
+        html += '<option value="voltage"' + (comp.props.mode === 'voltage' ? ' selected' : '') + '>Voltage (V)</option>';
+        html += '<option value="resistance"' + (comp.props.mode === 'resistance' ? ' selected' : '') + '>Resistance (Ω)</option>';
+        html += '<option value="current"' + (comp.props.mode === 'current' ? ' selected' : '') + '>Current (A)</option>';
+        html += '</select></div>';
+        html += '<div class="prop-row"><label>Reading</label><input type="text" id="prop-mmreading" value="' + (comp.props.reading || '---') + '" readonly style="font-family:monospace;color:#22c55e;background:#0f172a;"></div>';
+        html += '<div style="margin-top:6px;font-size:11px;color:#6b7280;line-height:1.4;padding:6px;background:rgba(0,0,0,0.2);border-radius:4px;">Connect COM and VΩA probes across the component you want to measure. Click ▶ Run to read the value.</div>';
       }
       html += '</div>';
       html += '<div class="prop-section"><div class="prop-section-title">Actions</div>';
@@ -1232,6 +1256,14 @@
       bind('prop-value', 'value');
       bind('prop-pins', 'pins', function (v) { return parseInt(v, 10); });
       bind('prop-closed', 'closed', function () { return document.getElementById('prop-closed').checked; });
+      // Multimeter mode selector
+      var mmMode = document.getElementById('prop-mmmode');
+      if (mmMode) {
+        mmMode.addEventListener('change', function () {
+          comp.props.mode = mmMode.value;
+          self._renderComponent(comp);
+        });
+      }
       bind('current-color-text', 'color');
       var palBtns = document.querySelectorAll('.color-swatch-mini');
       for (var k = 0; k < palBtns.length; k++) {
@@ -1406,6 +1438,59 @@
           body.setAttribute('fill', comp.props.color || '#ff0000');
           body.setAttribute('opacity', 0.35);
           body.removeAttribute('filter');
+        }
+      }
+      // Update multimeters
+      this._updateMultimeters(battery, circuitClosed);
+    },
+
+    _updateMultimeters: function (battery, circuitClosed) {
+      for (var i = 0; i < this.components.length; i++) {
+        var mm = this.components[i];
+        if (mm.type !== 'multimeter') continue;
+        var reading = '---';
+        if (circuitClosed && battery) {
+          var v = battery.props.voltage || 5;
+          if (mm.props.mode === 'voltage') {
+            // Measure voltage across the probes — we just show battery voltage
+            // for the simple simulation (no real node analysis)
+            reading = v.toFixed(2);
+          } else if (mm.props.mode === 'resistance') {
+            // Sum resistance of all resistors in circuit
+            var totalR = 0;
+            for (var j = 0; j < this.components.length; j++) {
+              var c = this.components[j];
+              if (c.type === 'resistor') totalR += c.props.resistance || 0;
+              if (c.type === 'pot') totalR += (c.props.resistance || 0) * (c.props.position || 0.5);
+              if (c.type === 'ldr') totalR += c.props.resistance || 0;
+            }
+            reading = totalR > 0 ? String(Math.round(totalR)) : 'OL';
+          } else if (mm.props.mode === 'current') {
+            // I = V / R
+            var totalR2 = 0;
+            for (var k = 0; k < this.components.length; k++) {
+              var c2 = this.components[k];
+              if (c2.type === 'resistor') totalR2 += c2.props.resistance || 0;
+            }
+            reading = totalR2 > 0 ? (v / totalR2).toFixed(3) : 'OL';
+          }
+        }
+        mm.props.reading = reading;
+        // Update the multimeter's display
+        var mmEl = this.svg.querySelector('[data-comp-id="' + mm.id + '"]');
+        if (mmEl) {
+          // Find the screen text (3rd text element in multimeter body)
+          var texts = mmEl.querySelectorAll('text');
+          // texts[0] is the reading, texts[1] is "MULTIMETER"
+          if (texts.length >= 2) {
+            var modeLabel = mm.props.mode === 'voltage' ? 'V' : (mm.props.mode === 'resistance' ? 'Ω' : 'A');
+            texts[0].textContent = reading + ' ' + modeLabel;
+          }
+        }
+        // Also update the properties panel input if this multimeter is selected
+        var mmReadingInput = document.getElementById('prop-mmreading');
+        if (mmReadingInput && this.selected === mm.id) {
+          mmReadingInput.value = reading;
         }
       }
     },
@@ -1649,7 +1734,7 @@
         ['led','◉ LED'],['rgbled','✱ RGB LED'],['buzzer','♫ Buzzer'],['motor','⌽ Motor'],['lamp','💡 Lamp'],
         ['resistor','⌇ Resistor'],['pot','⊥ Pot'],['capacitor','☰ Cap'],['inductor','∿ Inductor'],
         ['diode','▷ Diode'],['transistor','ⓣ NPN'],['ldr','◐ LDR'],
-        ['sevenseg','8 7-Seg'],['ic','⬚ IC'],['arduino','⬚ Arduino']
+        ['sevenseg','8 7-Seg'],['ic','⬚ IC'],['multimeter','🔬 Multimeter'],['arduino','⬚ Arduino']
       ];
       for (var i = 0; i < items.length; i++) {
         html += '<button class="shape-btn" data-component="' + items[i][0] + '" style="width:33%;"><span class="shape-glyph">' + items[i][1].split(' ')[0] + '</span><span>' + items[i][1].split(' ').slice(1).join(' ') + '</span></button>';

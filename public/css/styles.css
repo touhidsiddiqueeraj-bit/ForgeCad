@@ -499,6 +499,18 @@ canvas, svg { display: block; }
   gap: 2px;
   z-index: 10;
 }
+#circuits-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  background: rgba(0,0,0,0.001);
+  gap: 2px;
+  z-index: 10;
+}
 .tt-btn {
   width: 32px; height: 32px;
   background: transparent;

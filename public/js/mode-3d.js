@@ -465,6 +465,7 @@
           if (t === 'move' || t === 'rotate' || t === 'scale') {
             self.setTool(t);
           } else if (t === 'group') self.groupSelected();
+          else if (t === 'ungroup') self.ungroupSelected();
           else if (t === 'hole') self.toggleHoleSelected();
           else if (t === 'duplicate') self.duplicateSelected();
           else if (t === 'delete') self.deleteSelected();
@@ -989,38 +990,46 @@
     },
 
     _roofGeometry: function (w, h, d) {
-      // Half-cylinder roof, centered at origin (y from -h/2 to +h/2)
-      // This matches BoxGeometry centering so position.y = h/2 places it on the ground.
-      var seg = global.ForgeCAD.compat.getSegments(12);
+      // Half-cylinder roof, centered at origin (y from -h/2 to +h/2).
+      // Uses enough segments for a smooth curve regardless of perf tier.
+      var seg = global.ForgeCAD.compat.getSegments(24);
+      var halfSeg = Math.max(8, Math.floor(seg));  // at least 8 segments for smoothness
       var hw = w / 2, hd = d / 2;
       var positions = [];
       var indices = [];
-      var halfSeg = Math.max(4, Math.floor(seg / 2));
-      // Generate half-cylinder vertices (curve in XY plane, extruded along Z)
-      // y = sin(a) * h - h/2  →  ranges from -h/2 (base) to +h/2 (top)
+      // Generate half-cylinder vertices: curve in XY plane, extruded along Z.
+      // a goes 0..PI. y = sin(a)*h - h/2 → ranges -h/2 (base) to +h/2 (top).
       for (var i = 0; i <= halfSeg; i++) {
         var a = (i / halfSeg) * Math.PI;
         var x = Math.cos(a) * hw;
         var y = Math.sin(a) * h - h / 2;
-        positions.push(x, y, -hd);
-        positions.push(x, y,  hd);
+        positions.push(x, y, -hd);  // index i*2
+        positions.push(x, y,  hd);  // index i*2 + 1
       }
-      var n = (halfSeg + 1) * 2;
-      // Side faces (the curved part)
+      // Side faces (the curved part) — two triangles per quad
       for (var f = 0; f < halfSeg; f++) {
         var a = f * 2, b = f * 2 + 1, c = (f + 1) * 2, dd = (f + 1) * 2 + 1;
-        indices.push(a, c, b); indices.push(b, c, dd);
+        // Outward-facing winding (CCW when viewed from outside)
+        indices.push(a, c, b);
+        indices.push(b, c, dd);
       }
-      // End caps (flat semi-circle at each end)
-      positions.push(0, -h / 2, -hd); // left cap center (index n)
-      positions.push(0, -h / 2,  hd); // right cap center (index n+1)
-      var cl = n, cr = n + 1;
+      // End caps (flat semi-disc at each end) — fan triangulation from center
+      var n = (halfSeg + 1) * 2;
+      // Left cap center (z = -hd)
+      positions.push(0, -h / 2, -hd);
+      var cl = n;
       for (var g = 0; g < halfSeg; g++) {
         var e = g * 2, g2 = (g + 1) * 2;
-        // Left cap (z = -hd, vertices at even indices)
-        indices.push(cl, e, g2);
-        // Right cap (z = +hd, vertices at odd indices)
-        indices.push(cr, g2 + 1, e + 1);
+        // Wind so normal points in -Z (outward for left cap)
+        indices.push(cl, g2, e);
+      }
+      // Right cap center (z = +hd)
+      positions.push(0, -h / 2, hd);
+      var cr = n + 1;
+      for (var gg = 0; gg < halfSeg; gg++) {
+        var e2 = gg * 2 + 1, g2b = (gg + 1) * 2 + 1;
+        // Wind so normal points in +Z (outward for right cap)
+        indices.push(cr, e2, g2b);
       }
       var geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -1170,6 +1179,48 @@
       this.selected = [group];
       this._updateSelectionVisual();
       global.ForgeCAD.ui.toast('Grouped ' + (group.children.length) + ' objects');
+    },
+
+    ungroupSelected: function () {
+      if (this.selected.length === 0) {
+        global.ForgeCAD.ui.toast('Select a group first');
+        return;
+      }
+      var ungrouped = 0;
+      var newSelected = [];
+      for (var i = this.selected.length - 1; i >= 0; i--) {
+        var obj = this.selected[i];
+        if (!obj.userData || !obj.userData.isGroup) continue;
+        // Detach children from the group, attach to _objectsGroup at world position
+        var children = obj.children.slice();
+        for (var j = 0; j < children.length; j++) {
+          var child = children[j];
+          // Preserve world transform when re-parenting
+          obj.remove(child);
+          this._objectsGroup.attach(child);
+          this.objects.push(child);
+          newSelected.push(child);
+          ungrouped++;
+        }
+        // Remove the group itself
+        if (obj.parent) obj.parent.remove(obj);
+        // Remove group from objects array
+        var gidx = this.objects.indexOf(obj);
+        if (gidx >= 0) this.objects.splice(gidx, 1);
+        // Remove group from selection
+        var sidx = this.selected.indexOf(obj);
+        if (sidx >= 0) this.selected.splice(sidx, 1);
+      }
+      if (ungrouped === 0) {
+        global.ForgeCAD.ui.toast('Selected object is not a group');
+        return;
+      }
+      // Add newly-ungrouped children to selection
+      for (var k = 0; k < newSelected.length; k++) {
+        this.selected.push(newSelected[k]);
+      }
+      this._updateSelectionVisual();
+      global.ForgeCAD.ui.toast('Ungrouped ' + ungrouped + ' objects');
     },
 
     toggleHoleSelected: function () {

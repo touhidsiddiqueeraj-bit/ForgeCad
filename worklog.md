@@ -114,3 +114,34 @@ Stage Summary:
   3. ✓ Circuits transform toolbar with rotate/duplicate/delete buttons
   4. ✓ Breadboard zoom (wheel + buttons) and pan (drag empty space / middle-click)
   5. ✓ Breadboard scales via viewBox (components stay in SVG coords, viewport changes)
+
+---
+Task ID: fixes-5
+Agent: main
+Task: Fix ungroup, fix invisible circuits toolbar, fix broken roof, add multimeter
+
+Work Log:
+- Fixed circuits toolbar invisibility: #circuits-toolbar had no positioning CSS (was position:static, rendering at bottom of page). Added position:absolute, top:8px, left:50%, transform:translateX(-50%), z-index:10 — same as #transform-toolbar. Now floats at top center in circuits mode.
+- Fixed roof geometry: was using halfSeg = max(4, floor(seg/2)) which gave only 6 segments (too few for smooth curve). Changed to halfSeg = max(8, floor(seg)) with seg from getSegments(24) → at least 8 segments, typically 24. Also fixed end cap winding (was using g2+1/e+1 which mixed left/right cap vertices; now uses separate left cap loop with even indices and right cap loop with odd indices). Verified: 52 vertices, 288 indices, smooth half-cylinder shape.
+- Added ungroup functionality: new ⬓ button in 3D transform toolbar. ungroupSelected() method detaches children from group, attaches to _objectsGroup preserving world transforms, removes group from scene/objects/selection, adds ungrouped children to selection. Button bound in _bindEvents.
+- Added multimeter component:
+  - Glyph: 🔬, default size 60×50, props: {mode: 'voltage', range: 20, reading: '---'}
+  - Pins: COM (left) and VΩA (right)
+  - Body: dark case with screen showing green 7-seg-style reading + mode label + "MULTIMETER" brand
+  - Properties panel: mode dropdown (voltage/resistance/current), readonly reading input (green on black), instructions
+  - Simulation: _updateMultimeters() computes reading based on mode:
+    - voltage: shows battery voltage
+    - resistance: sums all resistors/pots/LDRs in circuit
+    - current: I = V/R using battery voltage and total resistance
+  - Live updates: multimeter display text + properties panel input update every sim tick (100ms)
+  - Added to mobile panel list
+- All tests pass: circuits toolbar visible (position:absolute, top:52), roof smooth (52 verts, on ground), ungroup works (3 objects after ungrouping), multimeter reads 5.00V with battery present.
+- Regression: smoke test 0 errors.
+- Screenshots: 38-roof-smooth, 39-multimeter, 40-roof-big.
+
+Stage Summary:
+- All 4 user-reported issues fixed:
+  1. ✓ Ungroup button (⬓) added to 3D transform toolbar — selects children after ungrouping
+  2. ✓ Circuits toolbar now floats at top center (was position:static, invisible)
+  3. ✓ Roof geometry fixed — smooth half-cylinder with 24 segments, properly centered
+  4. ✓ Multimeter component added with V/Ω/A modes, live readings during simulation
