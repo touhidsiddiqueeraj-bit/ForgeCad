@@ -1503,7 +1503,7 @@
           battery = this.components[i]; break;
         }
       }
-      if (!battery) return;
+      // Determine if circuit is closed (even without a battery, for resistance measurement)
       var circuitClosed = true;
       for (var j = 0; j < this.components.length; j++) {
         var c = this.components[j];
@@ -1511,77 +1511,77 @@
           circuitClosed = false; break;
         }
       }
-      var wires = this.svg.querySelectorAll('.wire-line');
-      for (var k = 0; k < wires.length; k++) {
-        if (circuitClosed) {
-          var cls = wires[k].getAttribute('class') || '';
-          if (cls.indexOf('live') === -1) wires[k].setAttribute('class', cls + ' live');
-        } else {
-          wires[k].setAttribute('class', 'wire-line');
-        }
-      }
-      this._simFrame = (this._simFrame || 0) + 1;
-      // Animate all load components
-      for (var m = 0; m < this.components.length; m++) {
-        var comp = this.components[m];
-        var el = this.svg.querySelector('[data-comp-id="' + comp.id + '"]');
-        if (!el) continue;
-        var powered = circuitClosed && battery.props.voltage > (comp.props.onThreshold || 1.5);
-        if (comp.type === 'led' || comp.type === 'lamp' || comp.type === 'rgbled') {
-          var body = el.querySelector('rect, circle');
-          if (!body) continue;
-          if (powered) {
-            body.setAttribute('fill', comp.props.color || '#ff0000');
-            body.setAttribute('opacity', 1.0);
-            body.setAttribute('filter', 'url(#led-glow)');
-            this._ensureGlowFilter();
+      // Only animate wires/LEDs if there's a battery and circuit is closed
+      if (battery) {
+        var wires = this.svg.querySelectorAll('.wire-line');
+        for (var k = 0; k < wires.length; k++) {
+          if (circuitClosed) {
+            var cls = wires[k].getAttribute('class') || '';
+            if (cls.indexOf('live') === -1) wires[k].setAttribute('class', cls + ' live');
           } else {
-            body.setAttribute('fill', comp.props.color || '#ff0000');
-            body.setAttribute('opacity', 0.35);
-            body.removeAttribute('filter');
+            wires[k].setAttribute('class', 'wire-line');
           }
-        } else if (comp.type === 'buzzer') {
-          // Pulse the buzzer circle to indicate sound
-          var bzCircle = el.querySelector('circle');
-          if (bzCircle) {
+        }
+        this._simFrame = (this._simFrame || 0) + 1;
+        // Animate all load components
+        for (var m = 0; m < this.components.length; m++) {
+          var comp = this.components[m];
+          var el = this.svg.querySelector('[data-comp-id="' + comp.id + '"]');
+          if (!el) continue;
+          var powered = circuitClosed && battery.props.voltage > (comp.props.onThreshold || 1.5);
+          if (comp.type === 'led' || comp.type === 'lamp' || comp.type === 'rgbled') {
+            var body = el.querySelector('rect, circle');
+            if (!body) continue;
             if (powered) {
-              var pulse = 0.85 + 0.15 * Math.sin(this._simFrame * 0.8);
-              bzCircle.setAttribute('opacity', pulse);
-              bzCircle.setAttribute('filter', 'url(#led-glow)');
+              body.setAttribute('fill', comp.props.color || '#ff0000');
+              body.setAttribute('opacity', 1.0);
+              body.setAttribute('filter', 'url(#led-glow)');
               this._ensureGlowFilter();
             } else {
-              bzCircle.setAttribute('opacity', 0.5);
-              bzCircle.removeAttribute('filter');
+              body.setAttribute('fill', comp.props.color || '#ff0000');
+              body.setAttribute('opacity', 0.35);
+              body.removeAttribute('filter');
             }
-          }
-        } else if (comp.type === 'motor') {
-          // Spin the motor — rotate the "M" text
-          var mText = el.querySelector('text');
-          if (mText) {
-            if (powered) {
-              var rot = (this._simFrame * 30) % 360;
-              mText.setAttribute('transform', 'rotate(' + rot + ')');
-              mText.setAttribute('fill', '#22c55e');
-            } else {
-              mText.setAttribute('transform', '');
-              mText.setAttribute('fill', '#fff');
+          } else if (comp.type === 'buzzer') {
+            var bzCircle = el.querySelector('circle');
+            if (bzCircle) {
+              if (powered) {
+                var pulse = 0.85 + 0.15 * Math.sin(this._simFrame * 0.8);
+                bzCircle.setAttribute('opacity', pulse);
+                bzCircle.setAttribute('filter', 'url(#led-glow)');
+                this._ensureGlowFilter();
+              } else {
+                bzCircle.setAttribute('opacity', 0.5);
+                bzCircle.removeAttribute('filter');
+              }
             }
-          }
-        } else if (comp.type === 'sevenseg') {
-          // Show the digit when powered
-          var segText = el.querySelectorAll('text');
-          if (segText.length > 0) {
-            if (powered) {
-              segText[0].setAttribute('fill', '#ef4444');
-              segText[0].textContent = comp.props.value || '8';
-            } else {
-              segText[0].setAttribute('fill', '#3a3a3a');
-              segText[0].textContent = '8';
+          } else if (comp.type === 'motor') {
+            var mText = el.querySelector('text');
+            if (mText) {
+              if (powered) {
+                var rot = (this._simFrame * 30) % 360;
+                mText.setAttribute('transform', 'rotate(' + rot + ')');
+                mText.setAttribute('fill', '#22c55e');
+              } else {
+                mText.setAttribute('transform', '');
+                mText.setAttribute('fill', '#fff');
+              }
+            }
+          } else if (comp.type === 'sevenseg') {
+            var segText = el.querySelectorAll('text');
+            if (segText.length > 0) {
+              if (powered) {
+                segText[0].setAttribute('fill', '#ef4444');
+                segText[0].textContent = comp.props.value || '8';
+              } else {
+                segText[0].setAttribute('fill', '#3a3a3a');
+                segText[0].textContent = '8';
+              }
             }
           }
         }
       }
-      // Update multimeters
+      // Always update multimeters (even without battery — resistance mode works standalone)
       this._updateMultimeters(battery, circuitClosed);
     },
 
@@ -1589,25 +1589,41 @@
       for (var i = 0; i < this.components.length; i++) {
         var mm = this.components[i];
         if (mm.type !== 'multimeter') continue;
-        var reading = '---';
-        if (circuitClosed && battery) {
-          var result = this._solveCircuit(battery);
-          if (mm.props.mode === 'voltage') {
-            // Voltage across the multimeter's two probes.
-            // We find the voltage difference between the two nodes the MM is connected across.
-            var mmPins = this._pinsFor(mm);
+        var reading = '0.00';  // default to zero instead of '---'
+        if (mm.props.mode === 'resistance') {
+          // Resistance mode works WITHOUT a battery — it uses the meter's internal
+          // current source. Measure resistance between the two probes.
+          var rResult = this._solveCircuit(battery);  // battery can be null
+          // If probes are connected across a resistive path, show that resistance.
+          // If not connected, show OL (open loop).
+          if (rResult && rResult.totalR > 0) {
+            reading = String(Math.round(rResult.totalR));
+          } else {
+            // Check if probes are connected to anything
             var p1 = this._findPin(mm.id + '_pin_0');
             var p2 = this._findPin(mm.id + '_pin_1');
-            if (p1 && p2 && result.nodeVoltage) {
-              var n1 = result.nodeVoltage[p1.component + '_pin_0'];
-              var n2 = result.nodeVoltage[p2.component + '_pin_1'];
-              // The MM is connected in parallel — find what it's measuring across
-              // by looking at the wires connected to each MM pin and tracing to
-              // the nodes on either side.
-              var nodeA = this._traceNode(p1.id, result.wireGroups);
-              var nodeB = this._traceNode(p2.id, result.wireGroups);
-              if (nodeA != null && nodeB != null && result.nodeVoltage[nodeA] != null && result.nodeVoltage[nodeB] != null) {
-                var v = Math.abs(result.nodeVoltage[nodeA] - result.nodeVoltage[nodeB]);
+            if (p1 && p2 && rResult && rResult.wireGroups) {
+              var nodeA = this._traceNode(p1.id, rResult.wireGroups);
+              var nodeB = this._traceNode(p2.id, rResult.wireGroups);
+              if (nodeA != null && nodeB != null && nodeA === nodeB) {
+                reading = '0';  // short circuit
+              } else {
+                reading = 'OL';  // open circuit
+              }
+            } else {
+              reading = 'OL';
+            }
+          }
+        } else if (circuitClosed && battery) {
+          var result = this._solveCircuit(battery);
+          if (mm.props.mode === 'voltage') {
+            var p1v = this._findPin(mm.id + '_pin_0');
+            var p2v = this._findPin(mm.id + '_pin_1');
+            if (p1v && p2v && result.nodeVoltage && result.wireGroups) {
+              var nodeAv = this._traceNode(p1v.id, result.wireGroups);
+              var nodeBv = this._traceNode(p2v.id, result.wireGroups);
+              if (nodeAv != null && nodeBv != null && result.nodeVoltage[nodeAv] != null && result.nodeVoltage[nodeBv] != null) {
+                var v = Math.abs(result.nodeVoltage[nodeAv] - result.nodeVoltage[nodeBv]);
                 reading = v.toFixed(2);
               } else {
                 reading = battery.props.voltage.toFixed(2);
@@ -1615,11 +1631,12 @@
             } else {
               reading = battery.props.voltage.toFixed(2);
             }
-          } else if (mm.props.mode === 'resistance') {
-            reading = result.totalR > 0 ? String(Math.round(result.totalR)) : 'OL';
           } else if (mm.props.mode === 'current') {
             reading = result.current > 0 ? result.current.toFixed(3) : '0.000';
           }
+        } else {
+          // No battery or circuit open — voltage and current read 0
+          reading = mm.props.mode === 'voltage' ? '0.00' : '0.000';
         }
         mm.props.reading = reading;
         // Update the multimeter's display
@@ -1670,9 +1687,8 @@
       for (var p = 0; p < this.pins.length; p++) {
         wireGroups[this.pins[p].id] = find(this.pins[p].id);
       }
-      // 2. Collect resistive components (resistors, pots, LDRs, motors, lamps, LEDs)
-      //    and their resistance between two nodes.
-      var resistors = [];  // {nodeA, nodeB, R, compId}
+      // 2. Collect resistive components
+      var resistors = [];
       for (var r = 0; r < this.components.length; r++) {
         var c = this.components[r];
         var pinsC = this._pinsFor(c);
@@ -1685,7 +1701,7 @@
         if (c.type === 'resistor') R = c.props.resistance || 0;
         else if (c.type === 'pot') R = (c.props.resistance || 0) * (c.props.position || 0.5);
         else if (c.type === 'ldr') R = c.props.resistance || 0;
-        else if (c.type === 'lamp' || c.type === 'led' || c.type === 'rgbled') R = 100; // approx
+        else if (c.type === 'lamp' || c.type === 'led' || c.type === 'rgbled') R = 100;
         else if (c.type === 'motor') R = 50;
         else if (c.type === 'buzzer') R = 200;
         else continue;
@@ -1693,21 +1709,37 @@
           resistors.push({ nodeA: nodeA, nodeB: nodeB, R: R, compId: c.id });
         }
       }
-      // 3. Find battery's two nodes
-      var batPins = this._pinsFor(battery);
-      var batNodeA = wireGroups[battery.id + '_pin_0'];  // +
-      var batNodeB = wireGroups[battery.id + '_pin_1'];  // -
-      var V = battery.props.voltage || 5;
-      // 4. Compute equivalent resistance between batNodeA and batNodeB
-      //    using a simple iterative nodal analysis.
-      //    We'll solve: for each node N (except ground = batNodeB), sum of (V_N - V_neighbor)/R = 0
-      //    This is a linear system. For simplicity, use Gauss-Seidel iteration.
+      // 3. Find battery's two nodes (battery may be null for resistance-only measurement)
+      var batNodeA = null, batNodeB = null, V = 0;
+      if (battery) {
+        batNodeA = wireGroups[battery.id + '_pin_0'];
+        batNodeB = wireGroups[battery.id + '_pin_1'];
+        V = battery.props.voltage || 5;
+      }
+      // 4. If no battery, use the multimeter's probes as the measurement points
+      //    and compute equivalent resistance between them.
+      if (!battery) {
+        // Find a multimeter to use as probe points
+        var mm = null;
+        for (var mi = 0; mi < this.components.length; mi++) {
+          if (this.components[mi].type === 'multimeter') { mm = this.components[mi]; break; }
+        }
+        if (mm) {
+          batNodeA = wireGroups[mm.id + '_pin_0'];
+          batNodeB = wireGroups[mm.id + '_pin_1'];
+          V = 1;  // hypothetical 1V to compute R = V/I
+        } else {
+          // No battery and no multimeter — nothing to solve
+          return { nodeVoltage: {}, totalR: 0, current: 0, wireGroups: wireGroups, batNodeA: null, batNodeB: null };
+        }
+      }
+      // 5. Nodal analysis via Gauss-Seidel
       var nodeSet = {};
-      nodeSet[batNodeA] = true;
-      nodeSet[batNodeB] = true;
-      for (var ri = 0; ri < resistors.length; ri++) {
-        nodeSet[resistors[ri].nodeA] = true;
-        nodeSet[resistors[ri].nodeB] = true;
+      if (batNodeA) nodeSet[batNodeA] = true;
+      if (batNodeB) nodeSet[batNodeB] = true;
+      for (var ri2 = 0; ri2 < resistors.length; ri2++) {
+        nodeSet[resistors[ri2].nodeA] = true;
+        nodeSet[resistors[ri2].nodeB] = true;
       }
       var nodes = Object.keys(nodeSet);
       var voltage = {};

@@ -378,7 +378,7 @@ canvas, svg { display: block; }
   display: flex;
 }
 .panel {
-  width: 220px;
+  width: 280px;
   border-right: 1px solid;
   display: flex;
   flex-direction: column;
@@ -585,12 +585,14 @@ canvas, svg { display: block; }
 }
 .prop-row-three {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
 }
 .prop-row-three .axis-input {
-  flex: 1;
   display: flex;
   align-items: center;
+  width: 100%;
 }
 .prop-row-three .axis-input span {
   font-size: 10px;
@@ -850,7 +852,7 @@ canvas, svg { display: block; }
 
 /* Tablet: < 1024px */
 @media (max-width: 1024px) {
-  .panel { width: 180px; }
+  .panel { width: 240px; }
   #proj-name { width: 120px; }
 }
 

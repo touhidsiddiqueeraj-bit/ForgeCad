@@ -199,3 +199,22 @@ Stage Summary:
   1. ✓ Gizmo is now properly sized (88% of object, was 190%) and drag works (object moves along the clicked axis)
   2. ✓ Resistance values shown on resistor bodies (e.g., "220Ω", "10k"), voltage on batteries, capacitance on capacitors
   3. ✓ "Low-End 3D Modeler" text removed from page title and about modal
+
+---
+Task ID: fixes-8
+Agent: main
+Task: Fix multimeter zero/no-battery, fix properties panel overflow
+
+Work Log:
+- Fixed multimeter not returning to zero: was showing '---' when no input. Now defaults to '0.00' for voltage, '0.000' for current, 'OL' for resistance (open circuit). When sim is running and no battery present, voltage/current show 0.00/0.000.
+- Fixed resistance mode requiring battery: _simulateStep was returning early if no battery, so multimeter never updated. Restructured: wire/LED animation only runs if battery present, but _updateMultimeters always runs. _solveCircuit now handles null battery — uses multimeter's own probes as measurement points with hypothetical 1V source to compute R = V/I. Verified: 470Ω resistor measured correctly without any battery in the circuit.
+- Fixed properties panel overflow: panel was 220px wide but content (especially prop-row-three with 3 axis inputs) needed 552px, causing 14 elements to overflow off-screen. Fixed by: (1) widening panel to 280px (240px on tablet), (2) changing prop-row-three from horizontal flex to vertical flex (X/Y/Z inputs stack vertically instead of side-by-side). Verified: 0 overflow elements, all content visible.
+- All tests pass: panel 280px with 0 overflow, multimeter shows 0.00 when no input, resistance reads 470Ω without battery.
+- Regression: smoke test 0 errors.
+- Screenshot: 47-panel-multimeter.
+
+Stage Summary:
+- All 3 user-reported issues fixed:
+  1. ✓ Multimeter returns to zero (0.00/0.000) when no input exists, instead of '---'
+  2. ✓ Resistance mode works without a battery (uses meter's internal source, measures 470Ω correctly)
+  3. ✓ Properties panel widened to 280px and X/Y/Z inputs stacked vertically — no more overflow
