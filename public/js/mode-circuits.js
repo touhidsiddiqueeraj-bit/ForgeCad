@@ -266,20 +266,37 @@
       this.svg.addEventListener('mousemove', function (ev) { self._onMouseMove(ev); });
       this.svg.addEventListener('mouseup',   function (ev) { self._onMouseUp(ev); });
       this.svg.addEventListener('mouseleave', function (ev) { self._onMouseUp(ev); });
-      // Touch
+      // Touch — use passive:false so we can preventDefault and stop synthetic mouse events
       this.svg.addEventListener('touchstart', function (ev) {
-        if (ev.touches.length === 1) self._onMouseDown(ev.touches[0]);
-        else if (ev.touches.length === 2) self._onPinchStart(ev);
-      }, { passive: true });
+        self._isTouch = true;  // flag for touch interaction
+        if (ev.touches.length === 1) {
+          ev.preventDefault();
+          self._onMouseDown(ev.touches[0]);
+        } else if (ev.touches.length === 2) {
+          self._onPinchStart(ev);
+        }
+      }, { passive: false });
       this.svg.addEventListener('touchmove', function (ev) {
-        if (ev.touches.length === 1) self._onMouseMove(ev.touches[0]);
-        else if (ev.touches.length === 2) self._onPinchMove(ev);
-      }, { passive: true });
+        if (ev.touches.length === 1) {
+          ev.preventDefault();
+          self._onMouseMove(ev.touches[0]);
+        } else if (ev.touches.length === 2) {
+          ev.preventDefault();
+          self._onPinchMove(ev);
+        }
+      }, { passive: false });
       this.svg.addEventListener('touchend', function (ev) {
         var t = ev.changedTouches[0];
-        if (t) self._onMouseUp(t);
-      }, { passive: true });
-      // Click for pin connection / wire bend add
+        if (t) {
+          if (self._dragMoved) {
+            ev.preventDefault();
+          }
+          self._onMouseUp(t);
+        }
+        // Reset touch flag after a short delay (allow _handleTap to run first)
+        setTimeout(function () { self._isTouch = false; }, 100);
+      }, { passive: false });
+      // Click for pin connection / wire bend add (mouse only — touch handles via touchend)
       this.svg.addEventListener('click', function (ev) { self._onClick(ev); });
       // Wheel zoom
       this.svg.addEventListener('wheel', function (ev) {
@@ -288,7 +305,6 @@
         var newZoom = self.zoom * delta;
         if (newZoom < 0.2) newZoom = 0.2;
         if (newZoom > 5) newZoom = 5;
-        // Zoom around cursor
         var pt = self._svgPoint(ev.clientX, ev.clientY);
         var ratio = newZoom / self.zoom;
         self.panX = pt.x - (pt.x + self.panX) / ratio;
@@ -422,7 +438,16 @@
     },
 
     _onMouseUp: function (ev) {
-      // If we didn't move, the click handler will handle pin selection etc.
+      // For touch: if we didn't drag, handle as tap (since we prevented synthetic click)
+      if (this._isTouch && !this._dragMoved && this._downPoint && ev.clientX !== undefined) {
+        var target = ev.target;
+        if (!target) {
+          target = document.elementFromPoint(ev.clientX, ev.clientY);
+        }
+        if (target) {
+          this._handleTap(target, ev.clientX, ev.clientY);
+        }
+      }
       this._dragComp = null;
       this._dragBendWire = null;
       this._dragBendIdx = -1;
@@ -430,7 +455,51 @@
       this._panStart = null;
     },
 
+    _handleTap: function (target, clientX, clientY) {
+      // Handle tap for touch devices (replaces synthetic click)
+      var self = this;
+      // Pin hit area?
+      if (target.hasAttribute && target.hasAttribute('data-pin-id')) {
+        var pinId = target.getAttribute('data-pin-id');
+        self._onPinClick(pinId, target);
+        return;
+      }
+      // Wire path?
+      if (target.hasAttribute && target.hasAttribute('data-wire-id')) {
+        var wid = target.getAttribute('data-wire-id');
+        var wire = self._findWire(wid);
+        if (wire) {
+          self.selectWire(wid);
+          return;
+        }
+      }
+      // Component body?
+      var compEl = target.closest ? target.closest('[data-comp-id]') : null;
+      if (compEl) {
+        if (self.wireStartPin) {
+          self.wireStartPin = null;
+          self._updateWirePreview();
+          self._highlightWireStartPin(null);
+          global.ForgeCAD.ui.status('Wire cancelled');
+          return;
+        }
+        var compId = compEl.getAttribute('data-comp-id');
+        self.selectComponent(compId);
+        return;
+      }
+      // Empty tap — cancel wire + deselect
+      if (self.wireStartPin) {
+        self.wireStartPin = null;
+        self._updateWirePreview();
+        self._highlightWireStartPin(null);
+        global.ForgeCAD.ui.status('Wire cancelled');
+      }
+      self.selectComponent(null);
+    },
+
     _onClick: function (ev) {
+      // Skip if this was a touch interaction (already handled by _handleTap)
+      if (this._isTouch) return;
       var target = ev.target;
       var self = this;
 

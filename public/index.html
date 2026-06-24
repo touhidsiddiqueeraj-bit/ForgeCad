@@ -69,6 +69,7 @@
   <aside id="left-panel" class="panel">
     <div class="panel-header">
       <span id="left-panel-title">Shapes</span>
+      <button class="panel-collapse-btn" data-target="left-panel" title="Collapse panel">◀</button>
     </div>
     <div class="panel-body" id="left-panel-body">
       <!-- Populated by JS -->
@@ -141,11 +142,16 @@
   <aside id="right-panel" class="panel">
     <div class="panel-header">
       <span id="right-panel-title">Properties</span>
+      <button class="panel-collapse-btn" data-target="right-panel" title="Collapse panel">▶</button>
     </div>
     <div class="panel-body" id="right-panel-body">
       <div class="empty-state">Select an object to edit properties.</div>
     </div>
   </aside>
+
+  <!-- Collapsed panel tabs (shown when panels are collapsed) -->
+  <button id="left-panel-tab" class="panel-tab hidden" title="Show shapes panel">▶</button>
+  <button id="right-panel-tab" class="panel-tab hidden" title="Show properties panel">◀</button>
 
 </main>
 

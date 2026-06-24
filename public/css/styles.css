@@ -395,6 +395,55 @@ canvas, svg { display: block; }
   letter-spacing: 0.5px;
   text-transform: uppercase;
   border-bottom: 1px solid;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.panel-collapse-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.6;
+  line-height: 1;
+}
+.panel-collapse-btn:hover { opacity: 1; }
+.panel-tab {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #2a3340;
+  color: #c8cdd6;
+  border: 1px solid #0d1119;
+  width: 20px;
+  height: 60px;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  font-size: 12px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#left-panel-tab {
+  left: 0;
+  border-radius: 0 4px 4px 0;
+}
+#right-panel-tab {
+  right: 0;
+  border-radius: 4px 0 0 4px;
+}
+.panel.collapsed {
+  width: 0 !important;
+  overflow: hidden;
+  border: none !important;
+}
+.theme-light .panel-tab {
+  background: #f3f4f6;
+  color: #2a3340;
+  border-color: #d1d5db;
 }
 .panel-body {
   flex: 1;

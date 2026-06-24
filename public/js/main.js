@@ -42,6 +42,7 @@
       this._bindHelpHint();
       this._bindCircuitsToolbar();
       this._bindMultiSelectToggle();
+      this._bindPanelCollapse();
       this._startAutoSave();
       // Apply mode
       this.setMode('3d');
@@ -505,6 +506,44 @@
             multiBtn.className = multiBtn.className.replace(/\bactive\b/g, '').trim();
             global.ForgeCAD.ui.status('Multi-select OFF');
           }
+        });
+      }
+    },
+
+    _bindPanelCollapse: function () {
+      var self = this;
+      // Collapse buttons in panel headers
+      var collapseBtns = document.querySelectorAll('.panel-collapse-btn');
+      for (var i = 0; i < collapseBtns.length; i++) {
+        collapseBtns[i].addEventListener('click', function (ev) {
+          var targetId = ev.currentTarget.getAttribute('data-target');
+          var panel = document.getElementById(targetId);
+          if (!panel) return;
+          panel.className += ' collapsed';
+          // Show the tab to re-expand
+          var tab = document.getElementById(targetId + '-tab');
+          if (tab) tab.className = tab.className.replace(/\bhidden\b/g, '').trim();
+          // Resize 3D canvas if in 3D mode
+          if (global.ForgeCAD.mode3D) global.ForgeCAD.mode3D._resizeRenderer();
+        });
+      }
+      // Tab buttons to re-expand
+      var leftTab = document.getElementById('left-panel-tab');
+      if (leftTab) {
+        leftTab.addEventListener('click', function () {
+          var panel = document.getElementById('left-panel');
+          panel.className = panel.className.replace(/\bcollapsed\b/g, '').trim();
+          leftTab.className += ' hidden';
+          if (global.ForgeCAD.mode3D) global.ForgeCAD.mode3D._resizeRenderer();
+        });
+      }
+      var rightTab = document.getElementById('right-panel-tab');
+      if (rightTab) {
+        rightTab.addEventListener('click', function () {
+          var panel = document.getElementById('right-panel');
+          panel.className = panel.className.replace(/\bcollapsed\b/g, '').trim();
+          rightTab.className += ' hidden';
+          if (global.ForgeCAD.mode3D) global.ForgeCAD.mode3D._resizeRenderer();
         });
       }
     },

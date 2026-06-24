@@ -260,3 +260,42 @@ Stage Summary:
   - src/app/page.tsx (Next.js entry, redirects to /index.html)
 - All documentation is accurate and up-to-date with the current codebase
 - No dev artifacts (worklog, test scripts, screenshots) would be committed
+
+---
+Task ID: fixes-ipad
+Agent: main
+Task: Fix panel collapse for tablet, fix touch drag in circuits, auto-detect light/dark mode
+
+Work Log:
+- Added panel collapse functionality for tablet/iPad:
+  - Added ◀/▶ collapse buttons to left and right panel headers
+  - When collapsed, panel width becomes 0 (hidden), small tab appears on the edge
+  - Clicking the tab re-expands the panel
+  - 3D canvas auto-resizes when panels collapse/expand
+  - Works on all screen sizes (not just mobile) — especially useful on iPad where panels eat 480px of 1024px screen
+  - CSS: .panel.collapsed { width: 0 !important; }, .panel-tab styling, .panel-collapse-btn styling
+  - JS: _bindPanelCollapse() in main.js handles collapse/expand
+- Fixed touch drag in circuits mode:
+  - Changed touch event listeners from passive:true to passive:false
+  - Added preventDefault() on touchstart and touchmove to prevent page scroll and synthetic mouse events
+  - Added _isTouch flag to track touch interactions
+  - Added _handleTap() method for touch taps (replaces synthetic click which was being prevented)
+  - _onMouseUp now calls _handleTap for touch interactions that didn't drag
+  - _onClick skips if _isTouch is true (avoids double-firing)
+  - Touch flag resets after 100ms delay
+- Added auto-detect light/dark mode:
+  - theme.js now checks prefers-color-scheme media query on first visit (no saved preference)
+  - If device is in dark mode → dark theme, light mode → light theme
+  - Listens for system theme changes via matchMedia.addEventListener (with addListener fallback for Safari < 14)
+  - Once user manually toggles theme, userOverride flag is set — stops following system changes
+  - localStorage still persists user's manual choice
+- All tests pass: panel collapse (240→0→240), touch handlers (passive:false, _isTouch flag), auto-detect (dark/light/userOverride)
+- Tested on iPad Air viewport (1180×820, touch, 2x DPR) — panels collapse correctly, viewport fills screen
+- Regression: smoke test 0 errors
+- Screenshots: 48-ipad-before-collapse, 49-ipad-after-collapse
+
+Stage Summary:
+- All 3 iPad issues fixed:
+  1. ✓ Panels collapse via ◀/▶ buttons in headers, re-expand via edge tabs — works on iPad/tablet
+  2. ✓ Touch drag fixed — passive:false, preventDefault stops page scroll, _handleTap handles taps, _isTouch flag prevents double-firing
+  3. ✓ Auto-detects dark/light mode from prefers-color-scheme, follows system changes until user manually toggles
