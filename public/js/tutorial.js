@@ -106,6 +106,173 @@
             action: null
           }
         ]
+      },
+      'led-project': {
+        title: 'Project: Build an LED Circuit',
+        mode: 'circuits',
+        steps: [
+          {
+            target: '.mode-btn[data-mode="circuits"]',
+            title: 'Step 1 / 10 — Switch to Circuits mode',
+            body: 'Click the "Circuits" tab at the top of the screen. The left panel will change to show circuit components.',
+            action: function () {
+              global.ForgeCAD.app.setMode('circuits');
+            }
+          },
+          {
+            target: '.shape-btn[data-component="battery"]',
+            title: 'Step 2 / 10 — Add a battery',
+            body: 'Click "Battery" in the left panel under "Power". A 5V battery appears on the breadboard. We will use it as our power source.',
+            action: function () {
+              global.ForgeCAD.modeCircuits.addComponent('battery');
+            }
+          },
+          {
+            target: '.shape-btn[data-component="switch"]',
+            title: 'Step 3 / 10 — Add a switch',
+            body: 'Click "Switch" to add a toggle switch. This will let us turn the LED on and off.',
+            action: function () {
+              global.ForgeCAD.modeCircuits.addComponent('switch');
+            }
+          },
+          {
+            target: '.shape-btn[data-component="led"]',
+            title: 'Step 4 / 10 — Add an LED',
+            body: 'Click "LED" under "Load". The LED is our light source. It will glow red when current flows through it.',
+            action: function () {
+              global.ForgeCAD.modeCircuits.addComponent('led');
+            }
+          },
+          {
+            target: '#svg-circuits',
+            title: 'Step 5 / 10 — Arrange the components',
+            body: 'Drag each component by clicking and holding on its body, then moving your cursor. Arrange them in a row: Battery → Switch → LED. They snap to the grid.',
+            action: null
+          },
+          {
+            target: '#svg-circuits',
+            title: 'Step 6 / 10 — Connect Battery + to Switch',
+            body: 'Click the "+" pin on the battery (the left pin). It turns yellow and pulses. Then click the "a" pin on the switch (its left pin). A wire connects them!',
+            action: null
+          },
+          {
+            target: '#svg-circuits',
+            title: 'Step 7 / 10 — Connect Switch to LED',
+            body: 'Click the "b" pin on the switch (right side). Then click the "+" pin on the LED (left side). Another wire appears.',
+            action: null
+          },
+          {
+            target: '#svg-circuits',
+            title: 'Step 8 / 10 — Complete the circuit',
+            body: 'Finally, click the "−" pin on the LED (right side), then click the "−" pin on the battery. The circuit loop is now complete!',
+            action: null
+          },
+          {
+            target: '#right-panel',
+            title: 'Step 9 / 10 — Close the switch',
+            body: 'Click on the switch to select it. In the right panel, check the "Closed" box. This completes the electrical connection inside the switch.',
+            action: null
+          },
+          {
+            target: '#sim-run',
+            title: 'Step 10 / 10 — Run the simulation! 🎉',
+            body: 'Click "Run" in the left panel. The wires turn green (current flowing!) and the LED glows red with a halo. You built a working circuit! Click "Stop" to end. Try opening the switch to see the LED turn off.',
+            action: null
+          }
+        ]
+      },
+      'house-3d-project': {
+        title: 'Project: Build a Simple House',
+        mode: '3d',
+        steps: [
+          {
+            target: '.mode-btn[data-mode="3d"]',
+            title: 'Step 1 / 6 — Switch to 3D Design',
+            body: 'Click the "3D Design" tab. We will build a simple house from primitive shapes.',
+            action: function () {
+              global.ForgeCAD.app.setMode('3d');
+            }
+          },
+          {
+            target: '.shape-btn[data-shape="box"]',
+            title: 'Step 2 / 6 — Add the walls',
+            body: 'Click "Box" to add the main body of the house. In the right panel, set Size to W=40, H=30, D=40 to make it house-shaped.',
+            action: function () {
+              global.ForgeCAD.mode3D.addShape('box');
+              // Auto-resize via timeout (properties panel takes a frame to render)
+              setTimeout(function () {
+                var obj = global.ForgeCAD.mode3D.objects[global.ForgeCAD.mode3D.objects.length - 1];
+                if (obj) {
+                  obj.userData.dimensions = { w: 40, h: 30, d: 40 };
+                  global.ForgeCAD.mode3D._rebuildGeometry(obj);
+                  global.ForgeCAD.mode3D._refreshPropertyValues();
+                }
+              }, 100);
+            }
+          },
+          {
+            target: '.shape-btn[data-shape="roof"]',
+            title: 'Step 3 / 6 — Add the roof',
+            body: 'Click "Roof" to add a half-cylinder roof. We will place it on top of the walls.',
+            action: function () {
+              global.ForgeCAD.mode3D.addShape('roof');
+              setTimeout(function () {
+                var obj = global.ForgeCAD.mode3D.objects[global.ForgeCAD.mode3D.objects.length - 1];
+                if (obj) {
+                  obj.userData.dimensions = { w: 44, h: 20, d: 44 };
+                  obj.position.y = 35; // sit on top of walls
+                  obj.material.color.set('#8B4513'); // brown
+                  global.ForgeCAD.mode3D._rebuildGeometry(obj);
+                  global.ForgeCAD.mode3D._updateSelectionVisual();
+                }
+              }, 100);
+            }
+          },
+          {
+            target: '.shape-btn[data-shape="box"]',
+            title: 'Step 4 / 6 — Add a door',
+            body: 'Click "Box" again to add a door. We will make it brown and place it on the front of the house.',
+            action: function () {
+              global.ForgeCAD.mode3D.addShape('box');
+              setTimeout(function () {
+                var obj = global.ForgeCAD.mode3D.objects[global.ForgeCAD.mode3D.objects.length - 1];
+                if (obj) {
+                  obj.userData.dimensions = { w: 8, h: 16, d: 2 };
+                  obj.position.set(0, 8, 21);
+                  obj.material.color.set('#5C4033');
+                  global.ForgeCAD.mode3D._rebuildGeometry(obj);
+                  global.ForgeCAD.mode3D._updateSelectionVisual();
+                }
+              }, 100);
+            }
+          },
+          {
+            target: '.shape-btn[data-shape="box"]',
+            title: 'Step 5 / 6 — Add windows',
+            body: 'Click "Box" one more time for a window. Make it blue and place it beside the door.',
+            action: function () {
+              global.ForgeCAD.mode3D.addShape('box');
+              setTimeout(function () {
+                var obj = global.ForgeCAD.mode3D.objects[global.ForgeCAD.mode3D.objects.length - 1];
+                if (obj) {
+                  obj.userData.dimensions = { w: 8, h: 8, d: 2 };
+                  obj.position.set(-14, 18, 21);
+                  obj.material.color.set('#87CEEB');
+                  global.ForgeCAD.mode3D._rebuildGeometry(obj);
+                  global.ForgeCAD.mode3D._updateSelectionVisual();
+                }
+              }, 100);
+            }
+          },
+          {
+            target: '#viewport-controls [data-view="iso"]',
+            title: 'Step 6 / 6 — Admire your house! 🏠',
+            body: 'Click the iso (isometric) view button to see your house from an angle. You can drag empty space to orbit. Try adding a second window, a chimney, or trees to make it your own!',
+            action: function () {
+              global.ForgeCAD.mode3D.setView('iso');
+            }
+          }
+        ]
       }
     },
 
@@ -123,9 +290,48 @@
     },
 
     startForCurrentMode: function () {
-      var mode = global.ForgeCAD.app.currentMode;
-      if (mode === '3d') this.start('3d-basics');
-      else this.start('circuits-basics');
+      // Show a picker modal so users can choose between basic + project tutorials
+      this.showPicker();
+    },
+
+    showPicker: function () {
+      var self = this;
+      var html = '<p style="margin-bottom:14px;color:#9aa3b2;font-size:13px;">Choose a tutorial. Each one walks you through the app step-by-step with a spotlight on the relevant buttons.</p>';
+      // Build list of tutorials
+      var tutorialList = [
+        { id: '3d-basics', name: '3D Design Basics', desc: '7 steps · Learn shapes, selection, transform, properties, camera, export', mode: '3D' },
+        { id: 'circuits-basics', name: 'Circuits Basics', desc: '6 steps · Learn components, wiring, wire styles, simulation', mode: 'Circ' },
+        { id: 'led-project', name: '🔧 Project: Build an LED Circuit', desc: '10 steps · Build a working battery + switch + LED circuit from scratch', mode: 'Circ' },
+        { id: 'house-3d-project', name: '🏠 Project: Build a Simple House', desc: '6 steps · Build a 3D house with walls, roof, door, and windows', mode: '3D' }
+      ];
+      for (var i = 0; i < tutorialList.length; i++) {
+        var t = tutorialList[i];
+        html += '<div class="tut-item" data-tid="' + t.id + '" style="padding:12px;border:1px solid #353f4f;border-radius:6px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:12px;">';
+        html += '<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:#2a3340;border-radius:4px;font-size:18px;color:#3b82f6;">' + (t.mode === '3D' ? '⬢' : '⚡') + '</div>';
+        html += '<div style="flex:1;">';
+        html += '<div style="font-weight:600;font-size:13px;color:#e4e7ec;">' + t.name + '</div>';
+        html += '<div style="font-size:11px;color:#6b7280;margin-top:2px;">' + t.desc + '</div>';
+        html += '</div>';
+        html += '<div style="font-size:18px;color:#3b82f6;">→</div>';
+        html += '</div>';
+      }
+      global.ForgeCAD.ui.modal('📚 Tutorials', html);
+      // Bind clicks
+      var items = document.querySelectorAll('.tut-item');
+      for (var j = 0; j < items.length; j++) {
+        items[j].addEventListener('click', function (ev) {
+          var tid = ev.currentTarget.getAttribute('data-tid');
+          global.ForgeCAD.ui.modalClose();
+          // Slight delay to let modal close
+          setTimeout(function () {
+            // Switch to the appropriate mode first
+            var tut = self.tutorials[tid];
+            if (tut && tut.mode === 'circuits') global.ForgeCAD.app.setMode('circuits');
+            else if (tut && tut.mode === '3d') global.ForgeCAD.app.setMode('3d');
+            self.start(tid);
+          }, 200);
+        });
+      }
     },
 
     next: function () {
@@ -191,6 +397,11 @@
       var tut = this.tutorials[this.currentTutorial];
       var step = tut.steps[this.currentStep];
       var self = this;
+
+      // Execute the step's action (e.g., switch mode, add a component)
+      if (step.action) {
+        try { step.action(); } catch (e) { console.warn('[tutorial] action failed:', e); }
+      }
 
       // Find target element
       var targetEl = null;

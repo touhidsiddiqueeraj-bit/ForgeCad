@@ -37,18 +37,33 @@ storage, and interactive tutorials.
   tutorial).
 
 ### Circuits mode
-- **10 components**: battery, button, switch, LED, buzzer, resistor,
-  potentiometer, capacitor, Arduino (visual), wire.
+- **18 components**: battery, button, switch, LED, RGB LED, buzzer, resistor,
+  potentiometer, capacitor, inductor, diode, transistor (NPN), LDR (photoresistor),
+  motor, lamp, 7-segment display, IC chip, Arduino (visual), solar cell.
+- **Custom element maker** (⚙ button in the component palette): define your own
+  component with custom name, glyph, label, body shape (rect/circle), size,
+  color, text color, and pin layout. Custom components appear in the palette
+  under "My Custom Elements" and are saved with the project.
 - **Breadboard grid** with power rails (+ and −).
-- **3 wire routing styles**: Manhattan (L-shape, default), Curved (cubic
-  bezier), Direct (straight line). Switch via the dropdown in the left panel.
+- **Drag-to-move components**: click and drag any component body to reposition
+  it on the breadboard. Snaps to grid (toggleable).
+- **Component size + rotation**: select a component and edit Width/Height/
+  Rotation in the right panel. Or click "Rotate 90°" for quick rotation.
+- **4 wire routing styles**:
+  - **Manhattan** (L-shape, default) — clean orthogonal routing
+  - **Curved** (cubic bezier) — smooth flowing curves
+  - **Direct** (straight line) — point-to-point
+  - **Custom** — click on a wire to add bend points, then drag the yellow bend
+    handles to route the wire around obstacles. Right-click a bend to delete it.
 - **Wire connection**: click a pin (it pulses yellow) → click another pin to
   connect. Click empty space to cancel. Pin hit area is 12px (much larger
   than the 5px visible pin) for easy clicking.
-- **Live simulation**: battery voltage, closed-switch detection, LED lights
-  up with a glow filter when current flows. Wires turn green when current
-  flows.
-- **Component properties**: value, color (LED), state (switch closed), etc.
+- **Live simulation**: battery voltage, closed-switch detection, LED/lamp/RGB
+  LED light up with a glow filter when current flows. Wires turn green when
+  current flows.
+- **Component properties**: value, color (LED), state (switch closed), size,
+  rotation, IC pin count, 7-segment display value, transistor gain, LDR
+  light level, etc.
 
 ### Both modes
 - **📁 Projects library** (IndexedDB): save unlimited named projects with
@@ -58,13 +73,18 @@ storage, and interactive tutorials.
   prompted to restore your previous session. Also saves on `beforeunload`.
 - **File export/import**: export project as `.json` file, re-import to
   continue. Independent of the IndexedDB library.
-- **Tutorials**: click the **?** button in the top bar to start an
-  interactive step-by-step walkthrough. Each step spotlights the relevant UI
-  element with a yellow border and shows a popover with instructions.
-  - "3D Design Basics" — 7 steps covering add, select, transform, properties,
+- **Tutorials**: click the **?** button in the top bar to open the tutorial
+  picker. Choose from 4 tutorials:
+  - **3D Design Basics** — 7 steps covering add, select, transform, properties,
     camera, export.
-  - "Circuits Basics" — 6 steps covering power, switch, LED, wiring, wire
+  - **Circuits Basics** — 6 steps covering power, switch, LED, wiring, wire
     style, simulation.
+  - **🔧 Project: Build an LED Circuit** — 10-step guided project that builds
+    a working battery → switch → LED circuit from scratch. Each step
+    auto-performs the action (adds the component, etc.) so you see it happen.
+  - **🏠 Project: Build a Simple House** — 6-step guided 3D project that
+    builds a house with walls, roof, door, and windows. Each step auto-adds
+    and positions the shapes with appropriate colors.
 - **Theme**: Pro CAD dark (default) + light mode. Choice persisted in
   localStorage. Theme-color meta tag updates for mobile browser chrome.
 - **Responsive**: desktop (3-panel), tablet (narrower panels), mobile (single

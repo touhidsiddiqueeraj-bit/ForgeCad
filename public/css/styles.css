@@ -766,7 +766,10 @@ canvas, svg { display: block; }
 .circuits-component {
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
-  cursor: pointer;
+  cursor: grab;
+}
+.circuits-component:active {
+  cursor: grabbing;
 }
 .circuits-component.selected {
   stroke: #3b82f6;
@@ -787,6 +790,13 @@ canvas, svg { display: block; }
   pointer-events: none !important;  /* must not intercept clicks on pins */
   stroke-dasharray: 4 3;
   opacity: 0.6;
+}
+.bend-handle {
+  cursor: move;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+}
+.bend-handle:hover {
+  r: 8;
 }
 .circuits-component-label {
   font-size: 10px;

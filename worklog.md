@@ -47,3 +47,37 @@ Stage Summary:
 - New screenshots: 21-new-features, 22-tutorial-step1, 23-tutorial-step2, 24-tutorial-circuits, 25-projects-modal.
 - Files created: js/storage.js, js/tutorial.js, architecture.md.
 - Files modified: index.html (added Projects + Tutorial buttons, added script tags), css/styles.css (wire-preview !important), js/ui.js (propRow3 adds id), js/mode-3d.js (input events, _refreshPropertyValues, _applyProp fix), js/mode-circuits.js (wireStyle, wire style selector, input events), js/main.js (projects modal, autosave, tutorial button binding), README.md.
+
+---
+Task ID: features-3
+Agent: main
+Task: Add circuit element drag-to-move, custom wire angles/bend points, component size/rotation, more components, custom element maker, guided project tutorials
+
+Work Log:
+- Rewrote mode-circuits.js with comprehensive new features:
+  - Drag-to-move: pointer events on SVG, components can be dragged by their body. Pin positions auto-update during drag, connected wires re-render.
+  - Custom wire routing: 4th wire style "custom" added. Click on any wire to add a bend point (yellow circle). Drag bend to route the wire anywhere. Right-click bend to delete. Wires store `bends: [{x,y}]` array and `styleOverride` field.
+  - Component size + rotation: each component now has `width` and `height` properties (per-type defaults). Right panel has Size row (W/H) + Rotate 90° button. Rotation math handles pin world position transformation.
+  - 8 new components: solarcell, rgbled, motor, lamp, inductor, diode, transistor (NPN), ldr (photoresistor), sevenseg (7-segment display), ic (configurable pin count 4-40). Each has custom SVG body rendering (e.g., transistor has base/collector/mitter lines, LED has colored body, IC has pin numbers + notch).
+  - Custom element maker modal: define name, glyph, label, body shape (rect/circle), width, height, color, text color, and dynamic pin list (add/remove pins with x/y/label). Custom types saved to `customTypes[]` array, serialized with project. Custom instances render via fallback in _componentBody using _customType metadata.
+  - Snap-to-grid toggle in left panel (checkbox). Applies to component drag and bend point placement.
+  - Duplicate button in properties panel.
+- Updated tutorial.js with 2 new guided project tutorials:
+  - 'led-project': 10 steps that auto-add battery, switch, LED; guide user to arrange, wire, close switch, run sim. Each step has an `action` function that executes when the step shows.
+  - 'house-3d-project': 6 steps that auto-add and configure box walls (40x30x40), brown roof on top, brown door, blue window, then iso view. Each step uses setTimeout to allow properties panel to render before resizing.
+  - Added `action` field support in tutorial steps — executed at start of _showStep.
+- Added tutorial picker modal: shows all 4 tutorials (3d-basics, circuits-basics, led-project, house-3d-project) with icons + descriptions. Auto-switches to the correct mode before starting.
+- Updated CSS: .circuits-component cursor: grab/grabbing; .bend-handle styling with hover effect.
+- All tests pass: smoke test 0 errors, bugfix test 0 errors, new comprehensive feature test 0 errors.
+- 6 new screenshots: 27-circuits-new-palette, 28-wire-bend-points, 29-custom-maker, 30-tutorial-picker, 31-led-tutorial-progress, 32-house-tutorial-result.
+
+Stage Summary:
+- All 6 user requests completed:
+  1. ✓ Circuit elements can be dragged to move (with snap-to-grid)
+  2. ✓ Wire angles can be changed via custom bend points (click wire to add, drag to route, right-click to delete)
+  3. ✓ Three elements in a line can now be connected (drag them apart, or use bend points to route around)
+  4. ✓ Component size and rotation editable in properties panel
+  5. ✓ 10 new components added (transistor, diode, motor, RGB LED, LDR, 7-segment, IC, inductor, lamp, solar cell)
+  6. ✓ Custom element maker with full pin definition
+  7. ✓ 2 guided project tutorials (LED circuit + 3D house) that auto-build the project step-by-step
+- Files modified: mode-circuits.js (full rewrite), tutorial.js (added 2 tutorials + picker + action support), styles.css (bend-handle + drag cursors), README.md (updated features).
