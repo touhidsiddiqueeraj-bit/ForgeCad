@@ -151,23 +151,35 @@
       var self = this;
       this.svg.addEventListener('click', function (ev) {
         var target = ev.target;
-        // Check if a pin was clicked
-        if (target.getAttribute('class') === 'circuits-pin') {
+        // Check if a pin was clicked — use hasAttribute for robustness
+        // (getAttribute('class') can fail on some old browsers when other
+        // classes are added; hasAttribute('data-pin-id') is more reliable.)
+        if (target.hasAttribute && target.hasAttribute('data-pin-id')) {
           var pinId = target.getAttribute('data-pin-id');
-          self._onPinClick(pinId);
+          self._onPinClick(pinId, target);
           return;
         }
         // Check if a component was clicked (background)
         var compEl = target.closest ? target.closest('[data-comp-id]') : null;
         if (compEl) {
+          // If we're in wire-start mode, don't select the component — just cancel the wire
+          if (self.wireStartPin) {
+            self.wireStartPin = null;
+            self._updateWirePreview();
+            self._highlightWireStartPin(null);
+            global.ForgeCAD.ui.status('Wire cancelled');
+            return;
+          }
           var compId = compEl.getAttribute('data-comp-id');
           self.selectComponent(compId);
           return;
         }
-        // Empty click — clear selection
+        // Empty click (or click on a wire line) — cancel any pending wire + clear selection
         if (self.wireStartPin) {
           self.wireStartPin = null;
           self._updateWirePreview();
+          self._highlightWireStartPin(null);
+          global.ForgeCAD.ui.status('Wire cancelled');
         }
         self.selectComponent(null);
       });
@@ -192,8 +204,16 @@
 
     /* ==================== COMPONENT CREATION ==================== */
     addComponent: function (type) {
-      var cx = 200 + Math.random() * 200;
-      var cy = 200 + Math.random() * 100;
+      // Place new components in a predictable grid pattern near the center
+      // so users can find them easily (instead of random positions).
+      var n = this.components.length;
+      var cols = 5;
+      var cellW = 100;
+      var cellH = 80;
+      var startX = 150;
+      var startY = 180;
+      var cx = startX + (n % cols) * cellW;
+      var cy = startY + Math.floor(n / cols) * cellH;
       var id = 'c' + Date.now() + '_' + this.components.length;
       var comp = {
         id: id,
@@ -206,7 +226,7 @@
       this.components.push(comp);
       this._renderComponent(comp);
       this.selectComponent(id);
-      global.ForgeCAD.ui.status('Added ' + type);
+      global.ForgeCAD.ui.status('Added ' + type + ' — drag values in Properties to move, click pins to wire');
     },
 
     _defaultProps: function (type) {
@@ -273,24 +293,39 @@
         } else {
           this.pins.push({ id: pinId, component: comp.id, x: comp.x + p[0], y: comp.y + p[1], label: p[2] });
         }
+        // Large invisible hit area for easier clicking (r=12)
+        var hit = document.createElementNS(this.ns, 'circle');
+        hit.setAttribute('cx', p[0]);
+        hit.setAttribute('cy', p[1]);
+        hit.setAttribute('r', 12);
+        hit.setAttribute('fill', 'transparent');
+        hit.setAttribute('class', 'circuits-pin-hit');
+        hit.setAttribute('data-pin-id', pinId);
+        hit.setAttribute('data-comp-id', comp.id);
+        hit.setAttribute('style', 'cursor: crosshair;');
+        g.appendChild(hit);
+        // Visible pin (r=5, on top of hit area)
         var c = document.createElementNS(this.ns, 'circle');
         c.setAttribute('cx', p[0]);
         c.setAttribute('cy', p[1]);
-        c.setAttribute('r', 4);
+        c.setAttribute('r', 5);
         c.setAttribute('class', 'circuits-pin');
         c.setAttribute('fill', '#3b82f6');
         c.setAttribute('stroke', '#fff');
-        c.setAttribute('stroke-width', '1');
+        c.setAttribute('stroke-width', '1.5');
         c.setAttribute('data-pin-id', pinId);
         c.setAttribute('data-comp-id', comp.id);
+        c.setAttribute('pointer-events', 'none'); // clicks go to the hit area below
         g.appendChild(c);
         // Pin label
         var lbl = document.createElementNS(this.ns, 'text');
         lbl.setAttribute('x', p[0]);
-        lbl.setAttribute('y', p[1] - 6);
+        lbl.setAttribute('y', p[1] - 8);
         lbl.setAttribute('text-anchor', 'middle');
-        lbl.setAttribute('font-size', '8');
+        lbl.setAttribute('font-size', '9');
+        lbl.setAttribute('font-weight', 'bold');
         lbl.setAttribute('class', 'circuits-component-label');
+        lbl.setAttribute('pointer-events', 'none');
         lbl.textContent = p[2];
         g.appendChild(lbl);
       }
@@ -379,19 +414,50 @@
     },
 
     /* ==================== WIRE CONNECTION ==================== */
-    _onPinClick: function (pinId) {
+    _onPinClick: function (pinId, targetEl) {
       if (!this.wireStartPin) {
         this.wireStartPin = pinId;
-        global.ForgeCAD.ui.status('Click another pin to connect');
+        this._highlightWireStartPin(pinId);
+        global.ForgeCAD.ui.status('Wire mode: click another pin to connect (or click empty space to cancel)');
       } else {
         if (this.wireStartPin !== pinId) {
           // Create wire
-          this.wires.push({ id: 'w' + Date.now(), from: this.wireStartPin, to: pinId });
-          this._renderWire(this.wires[this.wires.length - 1]);
+          var wire = { id: 'w' + Date.now() + '_' + Math.floor(Math.random() * 1000), from: this.wireStartPin, to: pinId };
+          this.wires.push(wire);
+          this._renderWire(wire);
+          this._highlightWireStartPin(null);
+          this.wireStartPin = null;
+          this._updateWirePreview();
+          global.ForgeCAD.ui.status('Wire connected');
+        } else {
+          // Clicked same pin — cancel
+          this._highlightWireStartPin(null);
+          this.wireStartPin = null;
+          this._updateWirePreview();
+          global.ForgeCAD.ui.status('Wire cancelled');
         }
-        this.wireStartPin = null;
-        this._updateWirePreview();
-        global.ForgeCAD.ui.status('Wire connected');
+      }
+    },
+
+    _highlightWireStartPin: function (pinId) {
+      // Reset all pin visuals (only the visible pin circles, not the hit areas)
+      var allPins = this.svg.querySelectorAll('.circuits-pin');
+      for (var i = 0; i < allPins.length; i++) {
+        allPins[i].setAttribute('fill', '#3b82f6');
+        allPins[i].setAttribute('r', 5);
+        allPins[i].setAttribute('class', 'circuits-pin');
+      }
+      if (pinId) {
+        // Highlight both the visible pin and add pulse class
+        var els = this.svg.querySelectorAll('[data-pin-id="' + pinId + '"]');
+        for (var j = 0; j < els.length; j++) {
+          if (els[j].getAttribute('class') === 'circuits-pin' ||
+              els[j].getAttribute('class') === 'circuits-pin wire-start') {
+            els[j].setAttribute('fill', '#fbbf24');
+            els[j].setAttribute('r', 7);
+            els[j].setAttribute('class', 'circuits-pin wire-start');
+          }
+        }
       }
     },
 
@@ -438,8 +504,11 @@
       line.setAttribute('id', 'wire-preview');
       line.setAttribute('x1', p1.x); line.setAttribute('y1', p1.y);
       line.setAttribute('x2', mx); line.setAttribute('y2', my);
-      line.setAttribute('class', 'wire-line');
+      line.setAttribute('class', 'wire-line wire-preview');
       line.setAttribute('opacity', 0.4);
+      // Critical: preview must not intercept clicks — otherwise the user
+      // can't click the second pin because the preview line is on top of it.
+      line.setAttribute('pointer-events', 'none');
       this.svg.appendChild(line);
     },
 
@@ -645,6 +714,7 @@
           if (body) {
             body.setAttribute('fill', comp.props.color);
             body.setAttribute('opacity', 0.4);
+            body.removeAttribute('filter');
           }
         }
       }
@@ -685,13 +755,45 @@
         var body = el.querySelector('rect');
         if (!body) continue;
         if (circuitClosed && battery.props.voltage > (comp.props.onThreshold || 1.8)) {
+          // LIT: bright fill + glow filter
           body.setAttribute('fill', comp.props.color);
           body.setAttribute('opacity', 1.0);
+          body.setAttribute('filter', 'url(#led-glow)');
+          // Add a glow filter if not present
+          this._ensureGlowFilter(comp.props.color);
         } else {
+          // UNLIT: dim
           body.setAttribute('fill', comp.props.color);
-          body.setAttribute('opacity', 0.3);
+          body.setAttribute('opacity', 0.35);
+          body.removeAttribute('filter');
         }
       }
+    },
+
+    _ensureGlowFilter: function (color) {
+      var existing = this.svg.querySelector('#led-glow');
+      if (existing) return;
+      var defs = this.svg.querySelector('defs') || document.createElementNS(this.ns, 'defs');
+      if (!defs.parentNode) this.svg.insertBefore(defs, this.svg.firstChild);
+      var filter = document.createElementNS(this.ns, 'filter');
+      filter.setAttribute('id', 'led-glow');
+      filter.setAttribute('x', '-50%');
+      filter.setAttribute('y', '-50%');
+      filter.setAttribute('width', '200%');
+      filter.setAttribute('height', '200%');
+      var glow = document.createElementNS(this.ns, 'feGaussianBlur');
+      glow.setAttribute('stdDeviation', '3');
+      glow.setAttribute('result', 'glow');
+      filter.appendChild(glow);
+      var merge = document.createElementNS(this.ns, 'feMerge');
+      var m1 = document.createElementNS(this.ns, 'feMergeNode');
+      m1.setAttribute('in', 'glow');
+      var m2 = document.createElementNS(this.ns, 'feMergeNode');
+      m2.setAttribute('in', 'SourceGraphic');
+      merge.appendChild(m1);
+      merge.appendChild(m2);
+      filter.appendChild(merge);
+      defs.appendChild(filter);
     },
 
     /* ==================== CLEAR ==================== */

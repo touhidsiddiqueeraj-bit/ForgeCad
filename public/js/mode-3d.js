@@ -75,9 +75,14 @@
       }
       this.renderer.setPixelRatio(compat.pixelRatioCap);
       this._resizeRenderer();
-      this._canvas.parentNode.insertBefore(this.renderer.domElement, this._canvas);
-      this._canvas.style.display = 'none';
+      // Insert the renderer's canvas right after the original, then remove
+      // the original. Keeping both around with id="canvas-3d" creates
+      // duplicate IDs which breaks event handling and CSS targeting.
+      var originalCanvas = this._canvas;
+      this._canvas.parentNode.insertBefore(this.renderer.domElement, originalCanvas);
       this.renderer.domElement.id = 'canvas-3d';
+      originalCanvas.id = 'canvas-3d-original';
+      originalCanvas.parentNode.removeChild(originalCanvas);
       this._canvas = this.renderer.domElement;
 
       // Scene
@@ -144,9 +149,10 @@
       var boxGeo = new THREE.BoxGeometry(1, 1, 1);
       var boxMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, wireframe: true, transparent: true, opacity: 0.8 });
       this._bboxHelper = new THREE.LineSegments(
-        new THREE.EdgesGeometry(boxGeo),
-        new THREE.LineBasicMaterial({ color: 0x3b82f6, linewidth: 2 })
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+        new THREE.LineBasicMaterial({ color: 0xfbbf24, linewidth: 2, transparent: true, opacity: 0.95, depthTest: false })
       );
+      this._bboxHelper.renderOrder = 999; // draw on top
       this._bboxHelper.visible = false;
       this.scene.add(this._bboxHelper);
 
@@ -269,42 +275,165 @@
       var dom = this.renderer.domElement;
       var self = this;
 
-      // Pointer down (works for both mouse and touch)
-      var onDown = function (ev) {
-        self._pointerDown = { x: ev.clientX, y: ev.clientY };
+      // Drag state
+      this._dragCandidate = null;     // raycast hit on pointer down
+      this._dragging = false;
+      this._dragTarget = null;        // object being dragged
+      this._dragStartRotation = { x: 0, y: 0, z: 0 };
+      this._dragStartScale = { x: 1, y: 1, z: 1 };
+      this._dragStartPos = { x: 0, y: 0, z: 0 };
+      this._dragHitPoint = null;      // world point where ray hit the object
+      this._dragWorkY = 0;            // Y of the workplane for this drag
+
+      // Reusable temp objects (avoid GC)
+      this._tmpVec = new THREE.Vector3();
+      this._tmpPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+      var getNDC = function (clientX, clientY) {
+        var rect = dom.getBoundingClientRect();
+        return {
+          x: ((clientX - rect.left) / rect.width) * 2 - 1,
+          y: -((clientY - rect.top) / rect.height) * 2 + 1
+        };
+      };
+
+      var raycastObjects = function (ndc) {
+        self._pointer.set(ndc.x, ndc.y);
+        self.raycaster.setFromCamera(self._pointer, self.camera);
+        // recursive=true so we hit meshes inside groups too
+        return self.raycaster.intersectObjects(self.objects, true);
+      };
+
+      var onDown = function (clientX, clientY, ev) {
+        self._pointerDown = { x: clientX, y: clientY };
         self._pointerMoved = false;
-      };
-      var onMove = function (ev) {
-        if (self._pointerDown) {
-          var dx = ev.clientX - self._pointerDown.x;
-          var dy = ev.clientY - self._pointerDown.y;
-          if (dx * dx + dy * dy > 25) self._pointerMoved = true;
+        self._dragCandidate = null;
+        self._dragging = false;
+        self._shiftKey = !!(ev && ev.shiftKey);
+
+        // Skip right-click (let context menu show)
+        if (ev && ev.button !== undefined && ev.button !== 0) return;
+
+        var ndc = getNDC(clientX, clientY);
+        var hits = raycastObjects(ndc);
+        if (hits.length > 0) {
+          var hit = hits[0];
+          self._dragCandidate = hit;
+          self._dragHitPoint = hit.point.clone();
+
+          // Determine drag target (mesh, or its parent group if grouped)
+          var target = hit.object;
+          // Find tracked object by walking up the parent chain
+          var trackedTarget = null;
+          var walker = hit.object;
+          while (walker) {
+            for (var i = 0; i < self.objects.length; i++) {
+              if (self.objects[i] === walker) { trackedTarget = self.objects[i]; break; }
+            }
+            if (trackedTarget) break;
+            walker = walker.parent;
+          }
+          target = trackedTarget || hit.object;
+
+          self._dragTarget = target;
+          self._dragStartRotation = { x: target.rotation.x, y: target.rotation.y, z: target.rotation.z };
+          self._dragStartScale = { x: target.scale.x, y: target.scale.y, z: target.scale.z };
+          self._dragStartPos = { x: target.position.x, y: target.position.y, z: target.position.z };
+          self._dragWorkY = target.position.y;
+
+          // Disable orbit controls so we can drag without rotating camera.
+          // They'll be re-enabled on pointer up.
+          if (self.controls) self.controls.enabled = false;
         }
       };
-      var onUp = function (ev) {
+
+      var onMove = function (clientX, clientY) {
         if (!self._pointerDown) return;
-        if (!self._pointerMoved) {
-          // Treat as click
-          self._handleClick(ev);
+        var dx = clientX - self._pointerDown.x;
+        var dy = clientY - self._pointerDown.y;
+        if (dx * dx + dy * dy > 16) {
+          self._pointerMoved = true;
+          if (self._dragCandidate && !self._dragging) {
+            self._dragging = true;
+            global.ForgeCAD.ui.status('Dragging — ' + self.tool);
+          }
+          if (self._dragging) {
+            self._performDrag(clientX, clientY);
+          }
         }
+      };
+
+      var onUp = function (clientX, clientY) {
+        if (!self._pointerDown) return;
+        var wasDragging = self._dragging;
+        var wasMoved = self._pointerMoved;
+        var shiftKey = self._shiftKey;
         self._pointerDown = null;
         self._pointerMoved = false;
+        self._dragCandidate = null;
+        self._dragging = false;
+        self._shiftKey = false;
+
+        // Re-enable orbit controls
+        if (self.controls) self.controls.enabled = true;
+
+        if (!wasDragging && !wasMoved) {
+          // Treat as click — select / deselect
+          self._handleClickAt(clientX, clientY, shiftKey);
+        } else if (wasDragging) {
+          // Update properties panel after drag
+          self._showProperties();
+          global.ForgeCAD.ui.status('Ready');
+        }
       };
-      dom.addEventListener('mousedown', onDown);
-      dom.addEventListener('mousemove', onMove);
-      dom.addEventListener('mouseup', onUp);
-      // Touch equivalents (OrbitControls also listens, so we only use for tap detection)
-      dom.addEventListener('touchstart', function (ev) {
-        if (ev.touches.length === 1) onDown(ev.touches[0]);
-      }, { passive: true });
-      dom.addEventListener('touchmove', function (ev) {
-        if (ev.touches.length === 1) onMove(ev.touches[0]);
-      }, { passive: true });
-      dom.addEventListener('touchend', function (ev) {
-        // Use last changed touch as the tap point
-        var t = ev.changedTouches[0];
-        if (t) onUp({ clientX: t.clientX, clientY: t.clientY });
-      }, { passive: true });
+
+      // Mouse events — we use pointer events when available (matches what
+      // OrbitControls uses), falling back to mouse events for very old browsers.
+      // Note: OrbitControls captures pointer events, but mousedown/mouseup
+      // still fire alongside pointerdown/pointerup, so we use both for safety.
+      var supportsPointer = (typeof window !== 'undefined' && window.PointerEvent);
+      if (supportsPointer) {
+        dom.addEventListener('pointerdown', function (ev) { onDown(ev.clientX, ev.clientY, ev); });
+        // pointermove and pointerup need to be on document since pointer capture
+        // may redirect them away from the canvas
+        document.addEventListener('pointermove', function (ev) {
+          if (self._pointerDown) onMove(ev.clientX, ev.clientY);
+        });
+        document.addEventListener('pointerup', function (ev) {
+          if (self._pointerDown) onUp(ev.clientX, ev.clientY);
+        });
+        document.addEventListener('pointercancel', function (ev) {
+          if (self._pointerDown) onUp(self._pointerDown.x, self._pointerDown.y);
+        });
+      } else {
+        dom.addEventListener('mousedown', function (ev) { onDown(ev.clientX, ev.clientY, ev); });
+        document.addEventListener('mousemove', function (ev) {
+          if (self._pointerDown) onMove(ev.clientX, ev.clientY);
+        });
+        document.addEventListener('mouseup', function (ev) {
+          if (self._pointerDown) onUp(ev.clientX, ev.clientY);
+        });
+      }
+      // Mouse leave on canvas — end drag gracefully
+      dom.addEventListener('mouseleave', function () {
+        // Don't end on mouseleave during drag — document listeners handle it
+      });
+
+      // Touch (single-finger only; multi-finger goes to OrbitControls for pinch/pan)
+      // Touch fires alongside pointer events on most browsers, but we keep these
+      // for old WebKit that doesn't fire pointer events.
+      if (!supportsPointer) {
+        dom.addEventListener('touchstart', function (ev) {
+          if (ev.touches.length === 1) onDown(ev.touches[0].clientX, ev.touches[0].clientY, ev);
+        }, { passive: true });
+        dom.addEventListener('touchmove', function (ev) {
+          if (ev.touches.length === 1) onMove(ev.touches[0].clientX, ev.touches[0].clientY);
+        }, { passive: true });
+        dom.addEventListener('touchend', function (ev) {
+          var t = ev.changedTouches[0];
+          if (t) onUp(t.clientX, t.clientY);
+        }, { passive: true });
+      }
 
       // Keyboard shortcuts
       document.addEventListener('keydown', function (ev) {
@@ -320,6 +449,10 @@
         }
         else if (ev.key === 'Delete' || ev.key === 'Backspace') {
           if (self.selected.length > 0) { ev.preventDefault(); self.deleteSelected(); }
+        } else if (ev.key === 'Escape') {
+          self.selected = [];
+          self._updateSelectionVisual();
+          global.ForgeCAD.ui.clearProperties();
         }
       });
 
@@ -344,6 +477,102 @@
           var view = ev.currentTarget.getAttribute('data-view');
           self.setView(view);
         });
+      }
+    },
+
+    /* ==================== DRAG LOGIC ==================== */
+    _performDrag: function (clientX, clientY) {
+      if (!this._dragTarget) return;
+      var target = this._dragTarget;
+      var rect = this.renderer.domElement.getBoundingClientRect();
+      this._pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      this._pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      this.raycaster.setFromCamera(this._pointer, this.camera);
+
+      if (this.tool === 'move') {
+        // Project ray onto horizontal plane at the object's current Y
+        this._tmpPlane.normal.set(0, 1, 0);
+        this._tmpPlane.constant = -this._dragWorkY;
+        if (this.raycaster.ray.intersectPlane(this._tmpPlane, this._tmpVec)) {
+          // Maintain the offset between the original hit point and the object origin,
+          // so the object doesn't "jump" to the cursor.
+          var offsetX = this._dragStartPos.x - this._dragHitPoint.x;
+          var offsetZ = this._dragStartPos.z - this._dragHitPoint.z;
+          var newX = this._tmpVec.x + offsetX;
+          var newZ = this._tmpVec.z + offsetZ;
+          if (this.snapEnabled) {
+            newX = Math.round(newX / this.snapSize) * this.snapSize;
+            newZ = Math.round(newZ / this.snapSize) * this.snapSize;
+          }
+          target.position.x = newX;
+          target.position.z = newZ;
+          // Keep Y at original workplane height
+          target.position.y = this._dragStartPos.y;
+        }
+      } else if (this.tool === 'rotate') {
+        var dxR = clientX - this._pointerDown.x;
+        var dyR = clientY - this._pointerDown.y;
+        // Horizontal drag = rotate around Y, vertical = rotate around X
+        target.rotation.y = this._dragStartRotation.y + dxR * 0.01;
+        target.rotation.x = this._dragStartRotation.x + dyR * 0.01;
+      } else if (this.tool === 'scale') {
+        var dyS = clientY - this._pointerDown.y;
+        // Drag up = bigger, down = smaller
+        var factor = 1 - dyS * 0.01;
+        factor = Math.max(0.1, Math.min(10, factor));
+        target.scale.x = this._dragStartScale.x * factor;
+        target.scale.y = this._dragStartScale.y * factor;
+        target.scale.z = this._dragStartScale.z * factor;
+      }
+      this._updateSelectionVisual();
+    },
+
+    /* ==================== CLICK HANDLER (selection) ==================== */
+    // Called from main.js _bindTopBar via app — kept for backward compat
+    _handleClick: function (ev) {
+      if (ev && ev.clientX !== undefined) {
+        this._handleClickAt(ev.clientX, ev.clientY, ev.shiftKey);
+      }
+    },
+
+    _handleClickAt: function (clientX, clientY, shiftKey) {
+      var rect = this.renderer.domElement.getBoundingClientRect();
+      this._pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      this._pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      this.raycaster.setFromCamera(this._pointer, this.camera);
+      var intersects = this.raycaster.intersectObjects(this.objects, true);
+      if (intersects.length > 0) {
+        // Walk up to find the top-level user object (mesh or group)
+        var hit = intersects[0].object;
+        // Find tracked object by walking up the parent chain
+        var tracked = null;
+        var walker = hit;
+        while (walker) {
+          for (var j = 0; j < this.objects.length; j++) {
+            if (this.objects[j] === walker) { tracked = this.objects[j]; break; }
+          }
+          if (tracked) break;
+          walker = walker.parent;
+        }
+        if (!tracked) tracked = hit;
+        var additive = !!shiftKey;
+        if (additive) {
+          var idx = this.selected.indexOf(tracked);
+          if (idx >= 0) this.selected.splice(idx, 1);
+          else this.selected.push(tracked);
+        } else {
+          this.selected = [tracked];
+        }
+        this._updateSelectionVisual();
+        this._showProperties();
+        global.ForgeCAD.ui.status('Selected: ' + (tracked.userData.name || tracked.userData.shapeType || 'object'));
+      } else {
+        // Click empty space — clear selection (unless shift)
+        if (!shiftKey) {
+          this.selected = [];
+          this._updateSelectionVisual();
+          global.ForgeCAD.ui.clearProperties();
+        }
       }
     },
 
@@ -406,57 +635,60 @@
     },
 
     /* ==================== SELECTION ==================== */
-    _handleClick: function (ev) {
-      var rect = this.renderer.domElement.getBoundingClientRect();
-      this._pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      this._pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-      this.raycaster.setFromCamera(this._pointer, this.camera);
-      var intersects = this.raycaster.intersectObjects(this.objects, false);
-      if (intersects.length > 0) {
-        var hit = intersects[0].object;
-        var additive = ev.shiftKey;
-        if (additive) {
-          // Toggle in selection
-          var idx = this.selected.indexOf(hit);
-          if (idx >= 0) this.selected.splice(idx, 1);
-          else this.selected.push(hit);
-        } else {
-          this.selected = [hit];
-        }
-        this._updateSelectionVisual();
-        this._showProperties();
-      } else {
-        // Click empty space — clear selection
-        if (!ev.shiftKey) {
-          this.selected = [];
-          this._updateSelectionVisual();
-          global.ForgeCAD.ui.clearProperties();
-          global.ForgeCAD.ui.setPropertiesTitle('Properties');
-        }
-      }
-    },
+    // _handleClick and _handleClickAt are defined above (after _performDrag).
+    // Selection logic lives there so drag and click share the same raycast path.
 
     _updateSelectionVisual: function () {
-      // Update wireframe outlines on all objects
-      for (var i = 0; i < this.objects.length; i++) {
-        var obj = this.objects[i];
-        var isSel = (this.selected.indexOf(obj) !== -1);
-        if (obj.material) {
-          obj.material.emissive = (isSel ? new THREE.Color(0x1e3a8a) : new THREE.Color(0x000000));
-          obj.material.emissiveIntensity = isSel ? 0.4 : 0;
+      // Walk all nodes (including children of groups) and apply emissive based on
+      // whether their root ancestor is in this.selected
+      var allNodes = [];
+      var collectNodes = function (obj) {
+        allNodes.push(obj);
+        if (obj.children) {
+          for (var i = 0; i < obj.children.length; i++) collectNodes(obj.children[i]);
+        }
+      };
+      for (var k = 0; k < this.objects.length; k++) collectNodes(this.objects[k]);
+
+      // Build a set of selected root objects
+      var selectedSet = {};
+      for (var s = 0; s < this.selected.length; s++) {
+        selectedSet[this.selected[s].uuid] = true;
+      }
+
+      // For each node, find its root ancestor in this.objects, check if selected
+      for (var i = 0; i < allNodes.length; i++) {
+        var node = allNodes[i];
+        if (!node.material) continue;
+        // Find root ancestor in this.objects
+        var root = node;
+        var walker = node;
+        while (walker) {
+          if (selectedSet[walker.uuid]) { root = walker; break; }
+          walker = walker.parent;
+        }
+        var isSel = !!selectedSet[root.uuid];
+        if (node.material.emissive) {
+          node.material.emissive.setHex(isSel ? 0x3b82f6 : 0x000000);
+          node.material.emissiveIntensity = isSel ? 0.6 : 0;
         }
       }
-      // Update bbox helper for single selection
-      if (this.selected.length === 1) {
-        var sel = this.selected[0];
-        var box = new THREE.Box3().setFromObject(sel);
+
+      // Update bbox helper — show for any selection (single or multi)
+      if (this.selected.length > 0) {
+        var box = new THREE.Box3();
+        for (var j = 0; j < this.selected.length; j++) {
+          box.expandByObject(this.selected[j]);
+        }
         var size = new THREE.Vector3();
         var center = new THREE.Vector3();
         box.getSize(size);
         box.getCenter(center);
-        if (size.x < 0.001) size.x = 0.001;
-        if (size.y < 0.001) size.y = 0.001;
-        if (size.z < 0.001) size.z = 0.001;
+        // Pad slightly so bbox is visible outside the mesh
+        size.multiplyScalar(1.05);
+        if (size.x < 0.1) size.x = 0.1;
+        if (size.y < 0.1) size.y = 0.1;
+        if (size.z < 0.1) size.z = 0.1;
         this._bboxHelper.scale.copy(size);
         this._bboxHelper.position.copy(center);
         this._bboxHelper.visible = true;

@@ -2,7 +2,7 @@
 import sys, json, time
 from playwright.sync_api import sync_playwright
 
-URL = "http://localhost:8000/index.html"
+URL = "http://localhost:3000/"
 errors = []
 warnings = []
 

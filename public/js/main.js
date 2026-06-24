@@ -31,6 +31,7 @@
       this._bindMobileTrigger();
       this._bindModalClose();
       this._bindKeyboard();
+      this._bindHelpHint();
       // Apply mode
       this.setMode('3d');
       // Welcome
@@ -60,11 +61,16 @@
       var canvasC = document.getElementById('canvas-circuits');
       var transformToolbar = document.getElementById('transform-toolbar');
       var leftPanelTitle = document.getElementById('left-panel-title');
+      // Show/hide help hint variant
+      var hint3D = document.querySelector('.help-hint-3d');
+      var hintC = document.querySelector('.help-hint-circuits');
       if (mode === '3d') {
         if (canvas3D) canvas3D.style.display = 'block';
         if (canvasC) canvasC.className += ' hidden';
         if (transformToolbar) transformToolbar.style.display = 'flex';
         if (leftPanelTitle) { leftPanelTitle.innerHTML = ''; leftPanelTitle.appendChild(document.createTextNode('Shapes')); }
+        if (hint3D) hint3D.className = hint3D.className.replace(/\bhidden\b/g, '').trim();
+        if (hintC && hintC.className.indexOf('hidden') === -1) hintC.className += ' hidden';
         global.ForgeCAD.mode3D.populateShapePanel();
         global.ForgeCAD.mode3D._resizeRenderer();
       } else {
@@ -72,6 +78,8 @@
         if (canvasC) canvasC.className = canvasC.className.replace(/\bhidden\b/g, '').trim();
         if (transformToolbar) transformToolbar.style.display = 'none';
         if (leftPanelTitle) { leftPanelTitle.innerHTML = ''; leftPanelTitle.appendChild(document.createTextNode('Components')); }
+        if (hintC) hintC.className = hintC.className.replace(/\bhidden\b/g, '').trim();
+        if (hint3D && hint3D.className.indexOf('hidden') === -1) hint3D.className += ' hidden';
         global.ForgeCAD.modeCircuits._populatePanel();
       }
       global.ForgeCAD.ui.clearProperties();
@@ -162,6 +170,16 @@
       if (backdrop) {
         backdrop.addEventListener('click', function (ev) {
           if (ev.target === backdrop) global.ForgeCAD.ui.modalClose();
+        });
+      }
+    },
+
+    _bindHelpHint: function () {
+      var dismiss = document.getElementById('help-hint-dismiss');
+      var hint = document.getElementById('help-hint');
+      if (dismiss && hint) {
+        dismiss.addEventListener('click', function () {
+          hint.className += ' hidden';
         });
       }
     },

@@ -79,6 +79,22 @@
       <svg id="svg-circuits" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
 
+    <!-- Help hint overlay -->
+    <div id="help-hint" class="help-hint">
+      <div class="help-hint-3d">
+        <strong>3D Design</strong> — click a shape on the left to add it.
+        Then <em>click</em> to select, <em>drag</em> to move (with Move tool).
+        W = move · E = rotate · R = scale · G = group · H = hole · Del = delete.
+        Drag empty space to orbit.
+      </div>
+      <div class="help-hint-circuits hidden">
+        <strong>Circuits</strong> — click a component on the left to add it.
+        Then <em>click a blue pin</em>, then click <em>another pin</em> to wire them.
+        Click empty space to cancel a wire. Select a component to edit its values.
+      </div>
+      <button class="help-hint-dismiss" id="help-hint-dismiss">×</button>
+    </div>
+
     <!-- Floating viewport controls -->
     <div id="viewport-controls">
       <button class="vc-btn" data-view="front" title="Front view">F</button>

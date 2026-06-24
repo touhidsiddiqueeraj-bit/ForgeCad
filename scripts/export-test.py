@@ -3,7 +3,7 @@ Calls exporter.parse() directly to avoid download event timing issues."""
 import os, json, time
 from playwright.sync_api import sync_playwright
 
-URL = "http://localhost:8000/index.html"
+URL = "http://localhost:3000/"
 OUT_DIR = "/home/z/my-project/download"
 os.makedirs(OUT_DIR, exist_ok=True)
 errors = []
