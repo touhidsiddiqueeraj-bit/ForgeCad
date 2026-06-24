@@ -397,9 +397,10 @@
         var dy = clientY - self._pointerDown.y;
         if (dx * dx + dy * dy > 16) {
           self._pointerMoved = true;
-          if (self._dragCandidate && !self._dragging) {
+          // Start dragging if we have either an object candidate OR an active gizmo axis
+          if ((self._dragCandidate || self._activeAxis) && !self._dragging) {
             self._dragging = true;
-            global.ForgeCAD.ui.status('Dragging — ' + self.tool);
+            global.ForgeCAD.ui.status('Dragging — ' + self.tool + (self._activeAxis ? ' (' + self._activeAxis.toUpperCase() + ' axis)' : ''));
           }
           if (self._dragging) {
             self._performDrag(clientX, clientY);
@@ -707,9 +708,10 @@
     // Selection logic lives there so drag and click share the same raycast path.
 
     _buildGizmo: function () {
-      // Build 3 arrows (X red, Y green, Z blue) plus small spheres at the tips
-      // for easy raycasting. Each arrow is a Group containing a cylinder (shaft)
-      // and a cone (head), with a transparent hit sphere at the tip.
+      // Build 3 arrows (X red, Y green, Z blue). Each arrow is a Group containing
+      // a cylinder (shaft), a cone (head), and an invisible cylindrical hit area
+      // covering the full length for easy raycasting.
+      // The gizmo is built at unit scale and resized in _updateSelectionVisual.
       var gizmo = new THREE.Group();
       gizmo.name = '__gizmo__';
       var axes = [
@@ -717,15 +719,15 @@
         { dir: 'y', color: 0x22c55e, rot: { x: 0, y: 0, z: 0 } },
         { dir: 'z', color: 0x3b82f6, rot: { x: Math.PI / 2, y: 0, z: 0 } }
       ];
-      var shaftLen = 30;
-      var shaftRad = 1.2;
-      var headLen = 8;
-      var headRad = 3;
+      var shaftLen = 1.0;   // unit length; gizmo scaled per-selection
+      var shaftRad = 0.04;
+      var headLen = 0.25;
+      var headRad = 0.1;
       for (var i = 0; i < axes.length; i++) {
         var a = axes[i];
         var group = new THREE.Group();
         group.userData.axis = a.dir;
-        // Shaft (cylinder along +Y, then rotated to axis)
+        // Shaft
         var shaftGeo = new THREE.CylinderGeometry(shaftRad, shaftRad, shaftLen, 8);
         var shaftMat = new THREE.MeshBasicMaterial({ color: a.color, depthTest: false, transparent: true, opacity: 0.95 });
         var shaft = new THREE.Mesh(shaftGeo, shaftMat);
@@ -739,11 +741,12 @@
         head.position.y = shaftLen + headLen / 2;
         head.renderOrder = 1000;
         group.add(head);
-        // Invisible hit sphere at the tip (for easy raycasting)
-        var hitGeo = new THREE.SphereGeometry(headLen, 8, 8);
+        // Invisible hit cylinder covering full arrow length (for easy raycasting)
+        var totalLen = shaftLen + headLen;
+        var hitGeo = new THREE.CylinderGeometry(headRad * 1.5, headRad * 1.5, totalLen, 8);
         var hitMat = new THREE.MeshBasicMaterial({ visible: false });
         var hit = new THREE.Mesh(hitGeo, hitMat);
-        hit.position.y = shaftLen + headLen / 2;
+        hit.position.y = totalLen / 2;
         hit.userData.axis = a.dir;
         hit.userData.isGizmoHandle = true;
         group.add(hit);
@@ -752,7 +755,7 @@
         gizmo.add(group);
       }
       // Center sphere (origin marker)
-      var centerGeo = new THREE.SphereGeometry(2.5, 12, 12);
+      var centerGeo = new THREE.SphereGeometry(0.08, 12, 12);
       var centerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 });
       var center = new THREE.Mesh(centerGeo, centerMat);
       center.renderOrder = 1000;
@@ -817,6 +820,13 @@
         // Position gizmo at selection center (only for single selection + move tool)
         if (this.selected.length === 1 && this.tool === 'move') {
           this._gizmo.position.copy(center);
+          // Scale gizmo to ~60% of the selection's largest dimension
+          // (so arrows extend just past the object edge)
+          var maxDim = Math.max(size.x, size.y, size.z);
+          var gizmoScale = maxDim * 0.6;
+          // Don't let it get too tiny or huge
+          gizmoScale = Math.max(5, Math.min(80, gizmoScale));
+          this._gizmo.scale.set(gizmoScale, gizmoScale, gizmoScale);
           this._gizmo.visible = true;
         } else {
           this._gizmo.visible = false;

@@ -778,6 +778,7 @@
           bodies.push(makeLine(-8, -h/3, -8, h/3));
           bodies.push(makeLine(8, -h/2, 8, h/2));
           bodies.push(makeText(0, -h/2 - 4, '+', '#000'));
+          bodies.push(makeText(0, h + 11, (comp.props.voltage || 5) + 'V', '#fbbf24', 9));
           break;
         case 'solarcell':
           bodies.push(makeRect(w, h, '#1e40af'));
@@ -813,6 +814,10 @@
             bodies.push(makeLine(zx + w/12, -h/3, zx + w/6, h/3));
             zx += w/6;
           }
+          // Show resistance value below the resistor
+          var rVal = comp.props.resistance || 0;
+          var rStr = rVal >= 1000 ? (rVal / 1000) + 'k' : String(rVal);
+          bodies.push(makeText(0, h + 11, rStr + 'Ω', '#fbbf24', 9));
           break;
         case 'inductor':
           bodies.push(makeRect(w, h, '#0e7490'));
@@ -831,6 +836,7 @@
           bodies.push(makeRect(w, h, '#0891b2'));
           bodies.push(makeLine(-w/6, -h/2, -w/6, h/2));
           bodies.push(makeLine(w/6, -h/2, w/6, h/2));
+          bodies.push(makeText(0, h + 11, (comp.props.capacitance || 100) + 'μF', '#22d3ee', 9));
           break;
         case 'button':
           bodies.push(makeRect(w, h, '#1f2937'));

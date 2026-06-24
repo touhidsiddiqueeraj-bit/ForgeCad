@@ -666,7 +666,7 @@
     },
 
     _aboutHTML: function () {
-      return '<p><strong>ForgeCAD</strong> v1.0 — a lightweight Tinkercad-inspired 3D modeler & circuit simulator, designed to run on extremely low-end devices (under 1GB RAM) and old browsers (down to Safari 7 / 2013).</p>' +
+      return '<p><strong>ForgeCAD</strong> v1.0 — a 3D modeler & circuit simulator that runs in any browser.</p>' +
              '<p style="margin-top:8px;"><strong>Features:</strong></p>' +
              '<ul style="margin-left:24px;line-height:1.6;">' +
              '<li>3D Design: 11 primitive shapes (box, sphere, cylinder, cone, torus, wedge, roof, text, polygon, tube, heart)</li>' +

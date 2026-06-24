@@ -178,3 +178,24 @@ Stage Summary:
   5. ✓ Wire deletion: click to select, Delete key or button to remove
   6. ✓ Power-on animations: buzzer pulses, motor spins, 7-seg shows digit, LED/lamp glow
   7. ✓ Multimeter uses proper nodal analysis (series/parallel/voltage divider) instead of summing all resistances
+
+---
+Task ID: fixes-7
+Agent: main
+Task: Fix gizmo size + drag, show resistance values, remove "Low-End 3D Modeler" text
+
+Work Log:
+- Fixed gizmo size: was built at fixed 38-unit scale (shaft 30 + head 8), making it nearly 2x the size of a 20-unit object. Rewrote _buildGizmo to use unit-scale geometry (shaftLen=1.0, shaftRad=0.04, headLen=0.25, headRad=0.1). Now _updateSelectionVisual scales the gizmo to 60% of the selection's largest dimension (clamped 5-80 units). For a 20-unit box, gizmo is now ~12.6 units (ratio 0.88) instead of 38 (ratio 1.9).
+- Fixed gizmo drag not working: onMove checked `self._dragCandidate` to start dragging, but gizmo clicks set `_activeAxis` instead of `_dragCandidate`. Changed condition to `(self._dragCandidate || self._activeAxis)` so gizmo drags trigger properly.
+- Improved gizmo hit area: was a small sphere at the tip only. Now an invisible cylinder covering the full arrow length (radius 1.5x head radius) for easier clicking.
+- Added resistance value display on resistor components: shows "220Ω" (or "10k" for >=1000) in yellow below the resistor body. Also added voltage display on battery ("5V"), capacitance on capacitor ("100μF").
+- Removed "Low-End 3D Modeler" from: page <title> (now "ForgeCAD — 3D Modeler & Circuit Simulator"), about modal text (now "a 3D modeler & circuit simulator that runs in any browser").
+- All tests pass: title updated, gizmo ratio 0.88 (reasonable), gizmo drag moves object 22 units on X, resistor shows "220Ω", battery shows "5V".
+- Regression: smoke test 0 errors.
+- Screenshot: 45-gizmo-fixed.
+
+Stage Summary:
+- All 4 user-reported issues fixed:
+  1. ✓ Gizmo is now properly sized (88% of object, was 190%) and drag works (object moves along the clicked axis)
+  2. ✓ Resistance values shown on resistor bodies (e.g., "220Ω", "10k"), voltage on batteries, capacitance on capacitors
+  3. ✓ "Low-End 3D Modeler" text removed from page title and about modal
