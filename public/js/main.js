@@ -531,6 +531,15 @@
           global.ForgeCAD.ui.bottomSheetClose();
           global.ForgeCAD.ui.hideDropdowns();
         }
+        // Delete key — delete selected wire in circuits mode
+        if ((ev.key === 'Delete' || ev.key === 'Backspace') && self.currentMode === 'circuits') {
+          if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+          var mc = global.ForgeCAD.modeCircuits;
+          if (mc.selectedWire) {
+            ev.preventDefault();
+            mc.deleteWire(mc.selectedWire);
+          }
+        }
       });
     },
 

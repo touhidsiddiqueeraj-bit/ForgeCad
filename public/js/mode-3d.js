@@ -157,6 +157,13 @@
       this._bboxHelper.visible = false;
       this.scene.add(this._bboxHelper);
 
+      // Axis gizmo — 3 colored arrows (X=red, Y=green, Z=blue) that appear on
+      // the selected object. Click an arrow to constrain drag to that axis.
+      this._gizmo = this._buildGizmo();
+      this._gizmo.visible = false;
+      this.scene.add(this._gizmo);
+      this._activeAxis = null;  // 'x' | 'y' | 'z' | null
+
       // Bind events
       this._bindEvents();
       this._bindShapeButtons();
@@ -251,9 +258,21 @@
     },
 
     _adaptPerformance: function (fps) {
-      // If sustained low FPS, drop quality further
+      // Require sustained low FPS (3 consecutive sub-15 readings) before downgrading.
+      // This prevents transient hiccups (scene init, garbage collection, tab switch)
+      // from permanently dropping a capable machine to low tier.
       var compat = global.ForgeCAD.compat;
-      if (fps < 20 && compat.tier !== 'low') {
+      if (fps < 15) {
+        this._lowFpsCount = (this._lowFpsCount || 0) + 1;
+      } else {
+        this._lowFpsCount = 0;
+      }
+      // Only downgrade if we've seen 3 consecutive low FPS readings AND the device
+      // isn't clearly high-tier (>=8GB RAM + >=4 cores). High-tier machines get the
+      // benefit of the doubt — one bad frame shouldn't cripple them.
+      var isHighTierHardware = compat.deviceMemoryMB >= 8192 && compat.hardwareConcurrency >= 4;
+      var threshold = isHighTierHardware ? 6 : 3;  // high-tier needs 6 consecutive low readings
+      if (this._lowFpsCount >= threshold && compat.tier !== 'low') {
         compat.tier = 'low';
         compat.maxObjects = Math.max(50, compat.maxObjects - 100);
         compat.enableShadows = false;
@@ -310,12 +329,36 @@
         self._pointerMoved = false;
         self._dragCandidate = null;
         self._dragging = false;
+        self._activeAxis = null;
         self._shiftKey = !!(ev && ev.shiftKey);
 
         // Skip right-click (let context menu show)
         if (ev && ev.button !== undefined && ev.button !== 0) return;
 
         var ndc = getNDC(clientX, clientY);
+
+        // First: check if we clicked a gizmo handle (axis arrow)
+        if (self._gizmo && self._gizmo.visible && self.selected.length === 1) {
+          self._pointer.set(ndc.x, ndc.y);
+          self.raycaster.setFromCamera(self._pointer, self.camera);
+          var gizmoHits = self.raycaster.intersectObjects(self._gizmo.children, true);
+          for (var gi = 0; gi < gizmoHits.length; gi++) {
+            var gh = gizmoHits[gi];
+            var w = gh.object;
+            while (w && !w.userData.axis) w = w.parent;
+            if (w && w.userData.axis) {
+              self._activeAxis = w.userData.axis;
+              self._dragTarget = self.selected[0];
+              self._dragStartRotation = { x: self._dragTarget.rotation.x, y: self._dragTarget.rotation.y, z: self._dragTarget.rotation.z };
+              self._dragStartScale = { x: self._dragTarget.scale.x, y: self._dragTarget.scale.y, z: self._dragTarget.scale.z };
+              self._dragStartPos = { x: self._dragTarget.position.x, y: self._dragTarget.position.y, z: self._dragTarget.position.z };
+              self._dragHitPoint = gh.point.clone();
+              if (self.controls) self.controls.enabled = false;
+              return;
+            }
+          }
+        }
+
         var hits = raycastObjects(ndc);
         if (hits.length > 0) {
           var hit = hits[0];
@@ -492,24 +535,45 @@
       this.raycaster.setFromCamera(this._pointer, this.camera);
 
       if (this.tool === 'move') {
-        // Project ray onto horizontal plane at the object's current Y
-        this._tmpPlane.normal.set(0, 1, 0);
-        this._tmpPlane.constant = -this._dragWorkY;
-        if (this.raycaster.ray.intersectPlane(this._tmpPlane, this._tmpVec)) {
-          // Maintain the offset between the original hit point and the object origin,
-          // so the object doesn't "jump" to the cursor.
-          var offsetX = this._dragStartPos.x - this._dragHitPoint.x;
-          var offsetZ = this._dragStartPos.z - this._dragHitPoint.z;
-          var newX = this._tmpVec.x + offsetX;
-          var newZ = this._tmpVec.z + offsetZ;
-          if (this.snapEnabled) {
-            newX = Math.round(newX / this.snapSize) * this.snapSize;
-            newZ = Math.round(newZ / this.snapSize) * this.snapSize;
+        // If an axis is active (gizmo handle was grabbed), constrain to that axis
+        if (this._activeAxis) {
+          // Project ray onto a plane that contains the axis and faces the camera
+          var axisVec = new THREE.Vector3();
+          if (this._activeAxis === 'x') axisVec.set(1, 0, 0);
+          else if (this._activeAxis === 'y') axisVec.set(0, 1, 0);
+          else axisVec.set(0, 0, 1);
+          // Plane normal = cross(axis, camera-to-origin) — gives a plane containing the axis
+          var camDir = new THREE.Vector3();
+          this.camera.getWorldDirection(camDir);
+          var planeNormal = new THREE.Vector3().crossVectors(axisVec, camDir).cross(axisVec).normalize();
+          this._tmpPlane.setFromNormalAndCoplanarPoint(planeNormal, this._dragHitPoint);
+          if (this.raycaster.ray.intersectPlane(this._tmpPlane, this._tmpVec)) {
+            // Project the intersection onto the axis
+            var delta = this._tmpVec.clone().sub(this._dragHitPoint);
+            var axisDelta = delta.dot(axisVec);
+            var newVal = this._dragStartPos[this._activeAxis] + axisDelta;
+            if (this.snapEnabled) {
+              newVal = Math.round(newVal / this.snapSize) * this.snapSize;
+            }
+            target.position[this._activeAxis] = newVal;
           }
-          target.position.x = newX;
-          target.position.z = newZ;
-          // Keep Y at original workplane height
-          target.position.y = this._dragStartPos.y;
+        } else {
+          // Free move on XZ plane (original behavior)
+          this._tmpPlane.normal.set(0, 1, 0);
+          this._tmpPlane.constant = -this._dragWorkY;
+          if (this.raycaster.ray.intersectPlane(this._tmpPlane, this._tmpVec)) {
+            var offsetX = this._dragStartPos.x - this._dragHitPoint.x;
+            var offsetZ = this._dragStartPos.z - this._dragHitPoint.z;
+            var newX = this._tmpVec.x + offsetX;
+            var newZ = this._tmpVec.z + offsetZ;
+            if (this.snapEnabled) {
+              newX = Math.round(newX / this.snapSize) * this.snapSize;
+              newZ = Math.round(newZ / this.snapSize) * this.snapSize;
+            }
+            target.position.x = newX;
+            target.position.z = newZ;
+            target.position.y = this._dragStartPos.y;
+          }
         }
       } else if (this.tool === 'rotate') {
         var dxR = clientX - this._pointerDown.x;
@@ -642,6 +706,60 @@
     // _handleClick and _handleClickAt are defined above (after _performDrag).
     // Selection logic lives there so drag and click share the same raycast path.
 
+    _buildGizmo: function () {
+      // Build 3 arrows (X red, Y green, Z blue) plus small spheres at the tips
+      // for easy raycasting. Each arrow is a Group containing a cylinder (shaft)
+      // and a cone (head), with a transparent hit sphere at the tip.
+      var gizmo = new THREE.Group();
+      gizmo.name = '__gizmo__';
+      var axes = [
+        { dir: 'x', color: 0xef4444, rot: { x: 0, y: 0, z: -Math.PI / 2 } },
+        { dir: 'y', color: 0x22c55e, rot: { x: 0, y: 0, z: 0 } },
+        { dir: 'z', color: 0x3b82f6, rot: { x: Math.PI / 2, y: 0, z: 0 } }
+      ];
+      var shaftLen = 30;
+      var shaftRad = 1.2;
+      var headLen = 8;
+      var headRad = 3;
+      for (var i = 0; i < axes.length; i++) {
+        var a = axes[i];
+        var group = new THREE.Group();
+        group.userData.axis = a.dir;
+        // Shaft (cylinder along +Y, then rotated to axis)
+        var shaftGeo = new THREE.CylinderGeometry(shaftRad, shaftRad, shaftLen, 8);
+        var shaftMat = new THREE.MeshBasicMaterial({ color: a.color, depthTest: false, transparent: true, opacity: 0.95 });
+        var shaft = new THREE.Mesh(shaftGeo, shaftMat);
+        shaft.position.y = shaftLen / 2;
+        shaft.renderOrder = 1000;
+        group.add(shaft);
+        // Head (cone)
+        var headGeo = new THREE.ConeGeometry(headRad, headLen, 12);
+        var headMat = new THREE.MeshBasicMaterial({ color: a.color, depthTest: false, transparent: true, opacity: 0.95 });
+        var head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = shaftLen + headLen / 2;
+        head.renderOrder = 1000;
+        group.add(head);
+        // Invisible hit sphere at the tip (for easy raycasting)
+        var hitGeo = new THREE.SphereGeometry(headLen, 8, 8);
+        var hitMat = new THREE.MeshBasicMaterial({ visible: false });
+        var hit = new THREE.Mesh(hitGeo, hitMat);
+        hit.position.y = shaftLen + headLen / 2;
+        hit.userData.axis = a.dir;
+        hit.userData.isGizmoHandle = true;
+        group.add(hit);
+        // Apply rotation to align with axis
+        group.rotation.set(a.rot.x, a.rot.y, a.rot.z);
+        gizmo.add(group);
+      }
+      // Center sphere (origin marker)
+      var centerGeo = new THREE.SphereGeometry(2.5, 12, 12);
+      var centerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 });
+      var center = new THREE.Mesh(centerGeo, centerMat);
+      center.renderOrder = 1000;
+      gizmo.add(center);
+      return gizmo;
+    },
+
     _updateSelectionVisual: function () {
       // Walk all nodes (including children of groups) and apply emissive based on
       // whether their root ancestor is in this.selected
@@ -696,8 +814,16 @@
         this._bboxHelper.scale.copy(size);
         this._bboxHelper.position.copy(center);
         this._bboxHelper.visible = true;
+        // Position gizmo at selection center (only for single selection + move tool)
+        if (this.selected.length === 1 && this.tool === 'move') {
+          this._gizmo.position.copy(center);
+          this._gizmo.visible = true;
+        } else {
+          this._gizmo.visible = false;
+        }
       } else {
         this._bboxHelper.visible = false;
+        this._gizmo.visible = false;
       }
       global.ForgeCAD.ui.setObjects(this.objects.length);
     },

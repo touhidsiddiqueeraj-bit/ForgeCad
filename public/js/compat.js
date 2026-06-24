@@ -104,11 +104,13 @@
     },
 
     _detectDevice: function () {
-      // navigator.deviceMemory is Chrome-only
+      // navigator.deviceMemory is Chrome-only and capped at 8GB for privacy.
+      // So on a 16GB machine it returns 8 → 8192MB. We treat >=4GB as high-tier
+      // eligible, which covers all modern desktops.
       this.deviceMemoryMB = (navigator.deviceMemory ? navigator.deviceMemory * 1024 : 0);
       if (!this.deviceMemoryMB) {
         // Heuristic estimate
-        if (this.isMobile) this.deviceMemoryMB = 1024; // assume 1GB on unknown mobile
+        if (this.isMobile) this.deviceMemoryMB = 1024;
         else this.deviceMemoryMB = 4096;
       }
       this.hardwareConcurrency = navigator.hardwareConcurrency || (this.isMobile ? 2 : 4);

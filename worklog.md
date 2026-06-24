@@ -145,3 +145,36 @@ Stage Summary:
   2. ✓ Circuits toolbar now floats at top center (was position:static, invisible)
   3. ✓ Roof geometry fixed — smooth half-cylinder with 24 segments, properly centered
   4. ✓ Multimeter component added with V/Ω/A modes, live readings during simulation
+
+---
+Task ID: fixes-6
+Agent: main
+Task: Add XYZ gizmos, remove extra brand text, make logo, fix perf tier, add wire deletion, add power-on animations, fix multimeter circuit analysis
+
+Work Log:
+- Added XYZ axis transform gizmo in 3D mode: 3 colored arrows (red=X, green=Y, blue=Z) with invisible hit spheres at tips. Appears on selected object when Move tool is active. Click an arrow to constrain drag to that axis. Uses plane projection (plane contains axis + faces camera) to compute axis-constrained movement. Gizmo built in _buildGizmo(), positioned in _updateSelectionVisual(), detected in onDown before object raycast.
+- Removed "ForgeCAD" text next to brand. Replaced with SVG logo (logo.svg) — stylized "F" formed by hammer head + anvil + spark, in blue gradient. Updated CSS .brand-logo.
+- Created logo.svg: 64×64 SVG with linear gradient blue background, white F-shape (hammer+anvil), yellow spark accent.
+- Fixed perf tier auto-downgrade: was triggering on any single FPS<20 reading. Now requires 3 consecutive FPS<15 readings (6 for high-tier hardware with >=8GB RAM + >=4 cores). Prevents transient hiccups from crippling capable machines. Also documented that navigator.deviceMemory is capped at 8GB by Chrome (privacy), so 16GB machines report 8192MB — still high-tier eligible.
+- Added wire deletion in circuits mode: single-click a wire to select it (yellow highlight + glow). Properties panel shows wire info + "Delete Wire" + "Clear Bends" buttons. Delete key also deletes selected wire. Double-click a wire to add a bend point. Added selectWire(), deleteWire(), _deselectAllWires() methods. CSS .wire-line.selected styling.
+- Added power-on animations for all load components:
+  - LED/lamp/RGB LED: glow filter + full opacity (existing)
+  - Buzzer: opacity pulse (sin wave) + glow filter
+  - Motor: "M" text rotates 30°/frame + turns green
+  - 7-segment: shows digit value when powered, dim "8" when off
+  - Updated stopSim() to reset all animations
+- Implemented proper circuit solver (_solveCircuit): uses union-find to group pins into electrical nodes via wires, builds resistor adjacency graph, solves node voltages via Gauss-Seidel iteration (200 iterations), computes total current leaving battery+ terminal, equivalent resistance = V/I. Multimeter voltage mode measures voltage difference between the two nodes its probes are connected to. Resistance mode shows R_eq. Current mode shows I = V/R_eq.
+  - Verified: battery(5V) + R1(100Ω) + R2(200Ω) in series → R_eq=300Ω, I=0.017A, midpoint voltage=3.33V (voltage divider).
+- All tests pass: logo present, brand-text removed, tier=high on 8GB/4-core machine, gizmo visible with 4 children, wire selection + deletion works, buzzer/motor/7-seg animate during sim, multimeter reads 300Ω / 0.017A correctly.
+- Regression: smoke test 0 errors.
+- Screenshots: 42-logo-gizmo, 43-animations, 44-multimeter-correct.
+
+Stage Summary:
+- All 7 user-reported issues fixed:
+  1. ✓ XYZ axis gizmos (red/green/blue arrows) for constrained movement
+  2. ✓ Extra "ForgeCAD" text removed, replaced with logo image
+  3. ✓ SVG logo created (hammer+anvil+F mark in blue gradient)
+  4. ✓ Perf tier no longer auto-downgrades on capable machines (requires sustained low FPS)
+  5. ✓ Wire deletion: click to select, Delete key or button to remove
+  6. ✓ Power-on animations: buzzer pulses, motor spins, 7-seg shows digit, LED/lamp glow
+  7. ✓ Multimeter uses proper nodal analysis (series/parallel/voltage divider) instead of summing all resistances

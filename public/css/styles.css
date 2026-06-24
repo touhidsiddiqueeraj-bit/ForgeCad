@@ -322,21 +322,10 @@ canvas, svg { display: block; }
   align-items: center;
   padding: 4px 8px;
 }
-.brand-mark {
-  display: inline-block;
-  width: 24px; height: 24px;
-  line-height: 24px;
-  text-align: center;
-  background: #3b82f6;
-  color: #fff;
-  font-weight: 700;
-  border-radius: 4px;
-  font-size: 14px;
-}
-.brand-text {
-  margin-left: 6px;
-  font-weight: 600;
-  font-size: 13px;
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  display: block;
 }
 
 .mode-switch {
@@ -813,6 +802,11 @@ canvas, svg { display: block; }
 .wire-line:hover {
   stroke-width: 4;
   opacity: 0.8;
+}
+.wire-line.selected {
+  stroke-width: 4;
+  stroke: #fbbf24 !important;
+  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
 }
 .wire-line.wire-preview {
   pointer-events: none !important;  /* must not intercept clicks on pins */

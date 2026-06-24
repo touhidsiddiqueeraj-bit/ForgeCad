@@ -447,28 +447,27 @@
         return;
       }
 
-      // Wire path clicked? (in custom mode, add a bend point)
+      // Wire path clicked? — select it; double-click adds bend (custom/manhattan only)
       if (target.hasAttribute && target.hasAttribute('data-wire-id')) {
-        if (self.wireStyle === 'custom' || self.wireStyle === 'manhattan') {
-          var wid = target.getAttribute('data-wire-id');
-          var wire = self._findWire(wid);
-          if (wire) {
+        var wid = target.getAttribute('data-wire-id');
+        var wire = self._findWire(wid);
+        if (wire) {
+          // Double-click on wire → add bend point (any style)
+          if (ev.detail === 2) {
             var spt = self._svgPoint(ev.clientX, ev.clientY);
             if (!wire.bends) wire.bends = [];
             if (self.snapToGrid) {
               spt.x = Math.round(spt.x / self.gridSpacing) * self.gridSpacing;
               spt.y = Math.round(spt.y / self.gridSpacing) * self.gridSpacing;
             }
-            // Insert bend at appropriate position (sorted by distance along path)
             wire.bends.push({ x: spt.x, y: spt.y });
-            // Force custom style for this wire so bends are respected
             wire.styleOverride = 'custom';
             self._renderWire(wire);
             global.ForgeCAD.ui.status('Bend point added — drag it to route the wire');
-            return;
+          } else {
+            // Single click selects the wire
+            self.selectWire(wid);
           }
-        } else {
-          // Other styles: clicking a wire selects it (could add delete)
           return;
         }
       }
@@ -1138,6 +1137,8 @@
 
     /* ==================== SELECTION ==================== */
     selectComponent: function (id) {
+      // Deselect any wire
+      this._deselectAllWires();
       var all = this.svg.querySelectorAll('.circuits-component');
       for (var i = 0; i < all.length; i++) all[i].setAttribute('class', 'circuits-component');
       if (!id) {
@@ -1149,6 +1150,72 @@
       var el = this.svg.querySelector('[data-comp-id="' + id + '"]');
       if (el) el.setAttribute('class', 'circuits-component selected');
       this._showProperties(id);
+    },
+
+    /* ==================== WIRE SELECTION / DELETION ==================== */
+    selectedWire: null,
+
+    _deselectAllWires: function () {
+      var wireEls = this.svg.querySelectorAll('.wire-line');
+      for (var i = 0; i < wireEls.length; i++) {
+        var cls = wireEls[i].getAttribute('class') || '';
+        wireEls[i].setAttribute('class', cls.replace(/\s*\bselected\b/g, '').trim());
+      }
+      this.selectedWire = null;
+    },
+
+    selectWire: function (wireId) {
+      // Deselect component
+      this.selectComponent(null);
+      this._deselectAllWires();
+      var wireEl = this.svg.querySelector('[data-wire-id="' + wireId + '"]');
+      if (wireEl) {
+        var cls = wireEl.getAttribute('class') || '';
+        wireEl.setAttribute('class', cls + ' selected');
+      }
+      this.selectedWire = wireId;
+      // Show wire properties in the right panel
+      var wire = this._findWire(wireId);
+      var fromPin = wire ? this._findPin(wire.from) : null;
+      var toPin = wire ? this._findPin(wire.to) : null;
+      global.ForgeCAD.ui.setPropertiesTitle('Wire');
+      var html = '<div class="prop-section"><div class="prop-section-title">Wire</div>';
+      html += '<div class="prop-row"><label>From</label><input type="text" value="' + (fromPin ? fromPin.label : '?') + '" readonly></div>';
+      html += '<div class="prop-row"><label>To</label><input type="text" value="' + (toPin ? toPin.label : '?') + '" readonly></div>';
+      html += '<div class="prop-row"><label>Bends</label><input type="text" value="' + (wire && wire.bends ? wire.bends.length : 0) + '" readonly></div>';
+      html += '</div>';
+      html += '<div class="prop-section"><div class="prop-section-title">Actions</div>';
+      html += '<div class="prop-row"><button class="tb-btn" id="btn-wire-clear-bends" style="width:100%;">Clear Bends</button></div>';
+      html += '<div class="prop-row"><button class="tb-btn" id="btn-wire-delete" style="width:100%;color:#e74c3c;">Delete Wire</button></div>';
+      html += '</div>';
+      html += '<div style="margin-top:8px;font-size:11px;color:#6b7280;line-height:1.4;">Tip: double-click a wire to add a bend point. Drag bend points to route. Right-click a bend to delete it.</div>';
+      global.ForgeCAD.ui.setPropertiesHTML(html);
+      var self = this;
+      var delBtn = document.getElementById('btn-wire-delete');
+      if (delBtn) delBtn.addEventListener('click', function () { self.deleteWire(wireId); });
+      var clrBtn = document.getElementById('btn-wire-clear-bends');
+      if (clrBtn) clrBtn.addEventListener('click', function () {
+        if (wire) {
+          wire.bends = [];
+          wire.styleOverride = null;
+          self._renderWire(wire);
+          self.selectWire(wireId);
+        }
+      });
+    },
+
+    deleteWire: function (wireId) {
+      for (var i = 0; i < this.wires.length; i++) {
+        if (this.wires[i].id === wireId) { this.wires.splice(i, 1); break; }
+      }
+      var el = this.svg.querySelector('[data-wire-id="' + wireId + '"]');
+      if (el) el.parentNode.removeChild(el);
+      // Remove bend handles for this wire
+      var handles = this.svg.querySelectorAll('[data-wire-id="' + wireId + '"][data-bend-idx]');
+      for (var j = 0; j < handles.length; j++) handles[j].parentNode.removeChild(handles[j]);
+      this.selectedWire = null;
+      global.ForgeCAD.ui.clearProperties();
+      global.ForgeCAD.ui.status('Wire deleted');
     },
 
     /* ==================== PROPERTIES ==================== */
@@ -1383,20 +1450,41 @@
       this.simRunning = false;
       if (this.simTimer) clearTimeout(this.simTimer);
       this.simTimer = null;
-      var liveWires = this.svg.querySelectorAll('.wire-line.live');
-      for (var i = 0; i < liveWires.length; i++) liveWires[i].setAttribute('class', 'wire-line');
-      // Reset LEDs and other loads
+      this._simFrame = 0;
+      var liveWires = this.svg.querySelectorAll('.wire-line');
+      for (var i = 0; i < liveWires.length; i++) {
+        var cls = liveWires[i].getAttribute('class') || '';
+        liveWires[i].setAttribute('class', cls.replace(/\s*\blive\b/g, '').trim());
+      }
+      // Reset all load components to their unpowered state
       var comps = this.svg.querySelectorAll('[data-comp-id]');
       for (var j = 0; j < comps.length; j++) {
         var cid = comps[j].getAttribute('data-comp-id');
         var comp = this._findComponent(cid);
         if (!comp) continue;
         var body = comps[j].querySelector('rect, circle');
-        if (!body) continue;
-        if (comp.type === 'led' || comp.type === 'lamp' || comp.type === 'rgbled') {
+        if (body && (comp.type === 'led' || comp.type === 'lamp' || comp.type === 'rgbled')) {
           body.setAttribute('fill', comp.props.color || '#ff0000');
           body.setAttribute('opacity', 0.4);
           body.removeAttribute('filter');
+        }
+        if (comp.type === 'buzzer' && body) {
+          body.setAttribute('opacity', 1.0);
+          body.removeAttribute('filter');
+        }
+        if (comp.type === 'motor') {
+          var mText = comps[j].querySelector('text');
+          if (mText) {
+            mText.setAttribute('transform', '');
+            mText.setAttribute('fill', '#fff');
+          }
+        }
+        if (comp.type === 'sevenseg') {
+          var segText = comps[j].querySelectorAll('text');
+          if (segText.length > 0) {
+            segText[0].setAttribute('fill', '#ef4444');
+            segText[0].textContent = '8';
+          }
         }
       }
       global.ForgeCAD.ui.status('Stopped');
@@ -1419,25 +1507,72 @@
       }
       var wires = this.svg.querySelectorAll('.wire-line');
       for (var k = 0; k < wires.length; k++) {
-        if (circuitClosed) wires[k].setAttribute('class', 'wire-line live');
-        else wires[k].setAttribute('class', 'wire-line');
+        if (circuitClosed) {
+          var cls = wires[k].getAttribute('class') || '';
+          if (cls.indexOf('live') === -1) wires[k].setAttribute('class', cls + ' live');
+        } else {
+          wires[k].setAttribute('class', 'wire-line');
+        }
       }
+      this._simFrame = (this._simFrame || 0) + 1;
+      // Animate all load components
       for (var m = 0; m < this.components.length; m++) {
         var comp = this.components[m];
-        if (comp.type !== 'led' && comp.type !== 'lamp' && comp.type !== 'rgbled') continue;
         var el = this.svg.querySelector('[data-comp-id="' + comp.id + '"]');
         if (!el) continue;
-        var body = el.querySelector('rect, circle');
-        if (!body) continue;
-        if (circuitClosed && battery.props.voltage > (comp.props.onThreshold || 1.8)) {
-          body.setAttribute('fill', comp.props.color || '#ff0000');
-          body.setAttribute('opacity', 1.0);
-          body.setAttribute('filter', 'url(#led-glow)');
-          this._ensureGlowFilter();
-        } else {
-          body.setAttribute('fill', comp.props.color || '#ff0000');
-          body.setAttribute('opacity', 0.35);
-          body.removeAttribute('filter');
+        var powered = circuitClosed && battery.props.voltage > (comp.props.onThreshold || 1.5);
+        if (comp.type === 'led' || comp.type === 'lamp' || comp.type === 'rgbled') {
+          var body = el.querySelector('rect, circle');
+          if (!body) continue;
+          if (powered) {
+            body.setAttribute('fill', comp.props.color || '#ff0000');
+            body.setAttribute('opacity', 1.0);
+            body.setAttribute('filter', 'url(#led-glow)');
+            this._ensureGlowFilter();
+          } else {
+            body.setAttribute('fill', comp.props.color || '#ff0000');
+            body.setAttribute('opacity', 0.35);
+            body.removeAttribute('filter');
+          }
+        } else if (comp.type === 'buzzer') {
+          // Pulse the buzzer circle to indicate sound
+          var bzCircle = el.querySelector('circle');
+          if (bzCircle) {
+            if (powered) {
+              var pulse = 0.85 + 0.15 * Math.sin(this._simFrame * 0.8);
+              bzCircle.setAttribute('opacity', pulse);
+              bzCircle.setAttribute('filter', 'url(#led-glow)');
+              this._ensureGlowFilter();
+            } else {
+              bzCircle.setAttribute('opacity', 0.5);
+              bzCircle.removeAttribute('filter');
+            }
+          }
+        } else if (comp.type === 'motor') {
+          // Spin the motor — rotate the "M" text
+          var mText = el.querySelector('text');
+          if (mText) {
+            if (powered) {
+              var rot = (this._simFrame * 30) % 360;
+              mText.setAttribute('transform', 'rotate(' + rot + ')');
+              mText.setAttribute('fill', '#22c55e');
+            } else {
+              mText.setAttribute('transform', '');
+              mText.setAttribute('fill', '#fff');
+            }
+          }
+        } else if (comp.type === 'sevenseg') {
+          // Show the digit when powered
+          var segText = el.querySelectorAll('text');
+          if (segText.length > 0) {
+            if (powered) {
+              segText[0].setAttribute('fill', '#ef4444');
+              segText[0].textContent = comp.props.value || '8';
+            } else {
+              segText[0].setAttribute('fill', '#3a3a3a');
+              segText[0].textContent = '8';
+            }
+          }
         }
       }
       // Update multimeters
@@ -1450,49 +1585,178 @@
         if (mm.type !== 'multimeter') continue;
         var reading = '---';
         if (circuitClosed && battery) {
-          var v = battery.props.voltage || 5;
+          var result = this._solveCircuit(battery);
           if (mm.props.mode === 'voltage') {
-            // Measure voltage across the probes — we just show battery voltage
-            // for the simple simulation (no real node analysis)
-            reading = v.toFixed(2);
+            // Voltage across the multimeter's two probes.
+            // We find the voltage difference between the two nodes the MM is connected across.
+            var mmPins = this._pinsFor(mm);
+            var p1 = this._findPin(mm.id + '_pin_0');
+            var p2 = this._findPin(mm.id + '_pin_1');
+            if (p1 && p2 && result.nodeVoltage) {
+              var n1 = result.nodeVoltage[p1.component + '_pin_0'];
+              var n2 = result.nodeVoltage[p2.component + '_pin_1'];
+              // The MM is connected in parallel — find what it's measuring across
+              // by looking at the wires connected to each MM pin and tracing to
+              // the nodes on either side.
+              var nodeA = this._traceNode(p1.id, result.wireGroups);
+              var nodeB = this._traceNode(p2.id, result.wireGroups);
+              if (nodeA != null && nodeB != null && result.nodeVoltage[nodeA] != null && result.nodeVoltage[nodeB] != null) {
+                var v = Math.abs(result.nodeVoltage[nodeA] - result.nodeVoltage[nodeB]);
+                reading = v.toFixed(2);
+              } else {
+                reading = battery.props.voltage.toFixed(2);
+              }
+            } else {
+              reading = battery.props.voltage.toFixed(2);
+            }
           } else if (mm.props.mode === 'resistance') {
-            // Sum resistance of all resistors in circuit
-            var totalR = 0;
-            for (var j = 0; j < this.components.length; j++) {
-              var c = this.components[j];
-              if (c.type === 'resistor') totalR += c.props.resistance || 0;
-              if (c.type === 'pot') totalR += (c.props.resistance || 0) * (c.props.position || 0.5);
-              if (c.type === 'ldr') totalR += c.props.resistance || 0;
-            }
-            reading = totalR > 0 ? String(Math.round(totalR)) : 'OL';
+            reading = result.totalR > 0 ? String(Math.round(result.totalR)) : 'OL';
           } else if (mm.props.mode === 'current') {
-            // I = V / R
-            var totalR2 = 0;
-            for (var k = 0; k < this.components.length; k++) {
-              var c2 = this.components[k];
-              if (c2.type === 'resistor') totalR2 += c2.props.resistance || 0;
-            }
-            reading = totalR2 > 0 ? (v / totalR2).toFixed(3) : 'OL';
+            reading = result.current > 0 ? result.current.toFixed(3) : '0.000';
           }
         }
         mm.props.reading = reading;
         // Update the multimeter's display
         var mmEl = this.svg.querySelector('[data-comp-id="' + mm.id + '"]');
         if (mmEl) {
-          // Find the screen text (3rd text element in multimeter body)
           var texts = mmEl.querySelectorAll('text');
-          // texts[0] is the reading, texts[1] is "MULTIMETER"
           if (texts.length >= 2) {
             var modeLabel = mm.props.mode === 'voltage' ? 'V' : (mm.props.mode === 'resistance' ? 'Ω' : 'A');
             texts[0].textContent = reading + ' ' + modeLabel;
           }
         }
-        // Also update the properties panel input if this multimeter is selected
         var mmReadingInput = document.getElementById('prop-mmreading');
         if (mmReadingInput && this.selected === mm.id) {
           mmReadingInput.value = reading;
         }
       }
+    },
+
+    /* ==================== CIRCUIT SOLVER ====================
+       Builds a graph of pins (nodes) connected by wires and components,
+       then solves for node voltages and branch currents using a simple
+       nodal analysis (single battery, series+parallel resistors).
+
+       For the multimeter in voltage mode, we measure the voltage difference
+       between the two nodes the MM probes are connected across.
+       For resistance mode, we compute equivalent resistance seen by the battery.
+       For current mode, we compute total circuit current I = V / R_eq.
+    */
+    _solveCircuit: function (battery) {
+      // 1. Build adjacency: which pins are connected via wires?
+      //    Use union-find to group pins into electrical nodes.
+      var parent = {};
+      var find = function (x) {
+        if (parent[x] === undefined) parent[x] = x;
+        if (parent[x] !== x) parent[x] = find(parent[x]);
+        return parent[x];
+      };
+      var union = function (a, b) {
+        var ra = find(a), rb = find(b);
+        if (ra !== rb) parent[ra] = rb;
+      };
+      // Union all pins connected by wires
+      for (var i = 0; i < this.wires.length; i++) {
+        union(this.wires[i].from, this.wires[i].to);
+      }
+      // Build a map: pinId → node index (using find() result as node id)
+      var wireGroups = {};
+      for (var p = 0; p < this.pins.length; p++) {
+        wireGroups[this.pins[p].id] = find(this.pins[p].id);
+      }
+      // 2. Collect resistive components (resistors, pots, LDRs, motors, lamps, LEDs)
+      //    and their resistance between two nodes.
+      var resistors = [];  // {nodeA, nodeB, R, compId}
+      for (var r = 0; r < this.components.length; r++) {
+        var c = this.components[r];
+        var pinsC = this._pinsFor(c);
+        if (pinsC.length < 2) continue;
+        var pinId0 = c.id + '_pin_0';
+        var pinId1 = c.id + '_pin_1';
+        var nodeA = wireGroups[pinId0];
+        var nodeB = wireGroups[pinId1];
+        var R = 0;
+        if (c.type === 'resistor') R = c.props.resistance || 0;
+        else if (c.type === 'pot') R = (c.props.resistance || 0) * (c.props.position || 0.5);
+        else if (c.type === 'ldr') R = c.props.resistance || 0;
+        else if (c.type === 'lamp' || c.type === 'led' || c.type === 'rgbled') R = 100; // approx
+        else if (c.type === 'motor') R = 50;
+        else if (c.type === 'buzzer') R = 200;
+        else continue;
+        if (R > 0 && nodeA !== nodeB) {
+          resistors.push({ nodeA: nodeA, nodeB: nodeB, R: R, compId: c.id });
+        }
+      }
+      // 3. Find battery's two nodes
+      var batPins = this._pinsFor(battery);
+      var batNodeA = wireGroups[battery.id + '_pin_0'];  // +
+      var batNodeB = wireGroups[battery.id + '_pin_1'];  // -
+      var V = battery.props.voltage || 5;
+      // 4. Compute equivalent resistance between batNodeA and batNodeB
+      //    using a simple iterative nodal analysis.
+      //    We'll solve: for each node N (except ground = batNodeB), sum of (V_N - V_neighbor)/R = 0
+      //    This is a linear system. For simplicity, use Gauss-Seidel iteration.
+      var nodeSet = {};
+      nodeSet[batNodeA] = true;
+      nodeSet[batNodeB] = true;
+      for (var ri = 0; ri < resistors.length; ri++) {
+        nodeSet[resistors[ri].nodeA] = true;
+        nodeSet[resistors[ri].nodeB] = true;
+      }
+      var nodes = Object.keys(nodeSet);
+      var voltage = {};
+      for (var ni = 0; ni < nodes.length; ni++) voltage[nodes[ni]] = 0;
+      voltage[batNodeA] = V;   // + terminal = V
+      voltage[batNodeB] = 0;   // - terminal = 0 (ground)
+      // Build adjacency for resistors
+      var adj = {};  // node → [{neighbor, R}]
+      for (var ai = 0; ai < resistors.length; ai++) {
+        var r0 = resistors[ai];
+        if (!adj[r0.nodeA]) adj[r0.nodeA] = [];
+        if (!adj[r0.nodeB]) adj[r0.nodeB] = [];
+        adj[r0.nodeA].push({ neighbor: r0.nodeB, R: r0.R });
+        adj[r0.nodeB].push({ neighbor: r0.nodeA, R: r0.R });
+      }
+      // Gauss-Seidel: iterate 200 times
+      for (var iter = 0; iter < 200; iter++) {
+        for (var nj = 0; nj < nodes.length; nj++) {
+          var n = nodes[nj];
+          if (n === batNodeA || n === batNodeB) continue;  // fixed
+          if (!adj[n]) continue;
+          var sumG = 0, sumGV = 0;
+          for (var k = 0; k < adj[n].length; k++) {
+            var Rk = adj[n][k].R;
+            var Gk = 1 / Rk;
+            sumG += Gk;
+            sumGV += Gk * voltage[adj[n][k].neighbor];
+          }
+          if (sumG > 0) voltage[n] = sumGV / sumG;
+        }
+      }
+      // 5. Total current: I = sum of currents leaving batNodeA
+      var current = 0;
+      if (adj[batNodeA]) {
+        for (var ci = 0; ci < adj[batNodeA].length; ci++) {
+          var Rca = adj[batNodeA][ci].R;
+          var Vdiff = voltage[batNodeA] - voltage[adj[batNodeA][ci].neighbor];
+          current += Vdiff / Rca;
+        }
+      }
+      // 6. Equivalent resistance R_eq = V / I
+      var totalR = current > 0 ? V / current : 0;
+      return {
+        nodeVoltage: voltage,
+        totalR: totalR,
+        current: current,
+        wireGroups: wireGroups,
+        batNodeA: batNodeA,
+        batNodeB: batNodeB
+      };
+    },
+
+    // Trace a pin to its electrical node index
+    _traceNode: function (pinId, wireGroups) {
+      return wireGroups[pinId];
     },
 
     _ensureGlowFilter: function () {
