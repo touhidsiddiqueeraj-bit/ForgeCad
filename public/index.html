@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1e2530">
+<title>ForgeCAD — Low-End 3D Modeler</title>
+<link rel="stylesheet" href="css/styles.css">
+<!-- Polyfills must load first to shim missing APIs (Safari 7 floor) -->
+<script src="js/polyfills.js"></script>
+</head>
+<body class="theme-dark app-mode-3d">
+
+<!-- ===================== TOP BAR ===================== -->
+<header id="topbar">
+  <div class="topbar-left">
+    <button id="brand-btn" class="brand" title="ForgeCAD">
+      <span class="brand-mark">F</span>
+      <span class="brand-text">ForgeCAD</span>
+    </button>
+    <div class="mode-switch" role="tablist">
+      <button class="mode-btn active" data-mode="3d" role="tab">3D Design</button>
+      <button class="mode-btn" data-mode="circuits" role="tab">Circuits</button>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="proj-name-wrap">
+      <input id="proj-name" type="text" value="Untitled Project" spellcheck="false">
+    </div>
+    <div class="topbar-actions">
+      <button class="tb-btn" id="btn-import" title="Import project (.json)">Import</button>
+      <button class="tb-btn" id="btn-export-proj" title="Save project (.json)">Save</button>
+      <button class="tb-btn primary" id="btn-export-menu" title="Export model">Export ▾</button>
+      <button class="tb-btn icon-btn" id="btn-theme" title="Toggle light/dark">
+        <span id="theme-icon">◐</span>
+      </button>
+      <button class="tb-btn icon-btn" id="btn-menu" title="More">
+        <span>☰</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Export dropdown -->
+<div id="export-menu" class="dropdown hidden">
+  <button data-export="stl">STL (3D print)</button>
+  <button data-export="obj">OBJ</button>
+  <button data-export="gltf">GLTF</button>
+  <button data-export="png">PNG snapshot</button>
+</div>
+
+<!-- More menu -->
+<div id="more-menu" class="dropdown hidden">
+  <button data-action="clear">Clear scene</button>
+  <button data-action="fit">Fit view</button>
+  <button data-action="grid">Toggle grid</button>
+  <button data-action="perf">Performance info</button>
+  <button data-action="about">About ForgeCAD</button>
+</div>
+
+<!-- ===================== MAIN AREA ===================== -->
+<main id="main">
+
+  <!-- LEFT PANEL (3D Design: shapes; Circuits: components) -->
+  <aside id="left-panel" class="panel">
+    <div class="panel-header">
+      <span id="left-panel-title">Shapes</span>
+    </div>
+    <div class="panel-body" id="left-panel-body">
+      <!-- Populated by JS -->
+    </div>
+  </aside>
+
+  <!-- VIEWPORT -->
+  <section id="viewport">
+    <canvas id="canvas-3d" class="canvas-active"></canvas>
+    <div id="canvas-circuits" class="canvas-circuits hidden">
+      <svg id="svg-circuits" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
+    <!-- Floating viewport controls -->
+    <div id="viewport-controls">
+      <button class="vc-btn" data-view="front" title="Front view">F</button>
+      <button class="vc-btn" data-view="top" title="Top view">T</button>
+      <button class="vc-btn" data-view="right" title="Right view">R</button>
+      <button class="vc-btn" data-view="iso" title="Isometric view">_iso</button>
+      <button class="vc-btn" data-view="fit" title="Fit all">[ ]</button>
+    </div>
+
+    <!-- Transform toolbar (3D mode only) -->
+    <div id="transform-toolbar" class="floating-toolbar">
+      <button class="tt-btn active" data-tool="move" title="Move (W)">✥</button>
+      <button class="tt-btn" data-tool="rotate" title="Rotate (E)">↻</button>
+      <button class="tt-btn" data-tool="scale" title="Scale (R)">⤢</button>
+      <span class="tt-sep"></span>
+      <button class="tt-btn" data-tool="group" title="Group (G)">⊕</button>
+      <button class="tt-btn" data-tool="hole" title="Toggle Hole (H)">⊖</button>
+      <button class="tt-btn" data-tool="duplicate" title="Duplicate (D)">⎘</button>
+      <button class="tt-btn" data-tool="delete" title="Delete (Del)">✕</button>
+    </div>
+
+    <!-- Mobile: bottom sheet trigger -->
+    <button id="mobile-panel-toggle" class="mobile-only">☰ Tools</button>
+  </section>
+
+  <!-- RIGHT PANEL (Properties) -->
+  <aside id="right-panel" class="panel">
+    <div class="panel-header">
+      <span id="right-panel-title">Properties</span>
+    </div>
+    <div class="panel-body" id="right-panel-body">
+      <div class="empty-state">Select an object to edit properties.</div>
+    </div>
+  </aside>
+
+</main>
+
+<!-- ===================== BOTTOM STATUS BAR ===================== -->
+<footer id="statusbar">
+  <span id="status-left">Ready</span>
+  <span id="status-center"></span>
+  <span id="status-right">
+    <span id="status-objects">0 objects</span>
+    <span class="sep">·</span>
+    <span id="status-fps">— fps</span>
+    <span class="sep">·</span>
+    <span id="status-perf" title="Device capability">— tier</span>
+  </span>
+</footer>
+
+<!-- ===================== MOBILE BOTTOM SHEET ===================== -->
+<div id="bottom-sheet" class="hidden">
+  <div class="bottom-sheet-handle"></div>
+  <div id="bottom-sheet-content"></div>
+</div>
+
+<!-- ===================== MODAL ===================== -->
+<div id="modal-backdrop" class="hidden">
+  <div id="modal">
+    <div class="modal-header">
+      <span id="modal-title">Title</span>
+      <button id="modal-close" class="modal-close-btn">×</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ===================== TOAST ===================== -->
+<div id="toast" class="hidden"></div>
+
+<!-- Hidden file input -->
+<input type="file" id="file-input" accept=".json,.stl,.obj" class="hidden">
+
+<!-- Vendor scripts -->
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="vendor/STLExporter.js"></script>
+<script src="vendor/OBJExporter.js"></script>
+<script src="vendor/GLTFExporter.js"></script>
+
+<!-- App scripts (ES5, load order matters) -->
+<script src="js/compat.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/exporters.js"></script>
+<script src="js/mode-3d.js"></script>
+<script src="js/mode-circuits.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>
