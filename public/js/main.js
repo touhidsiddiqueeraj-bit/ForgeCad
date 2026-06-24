@@ -40,6 +40,8 @@
       this._bindModalClose();
       this._bindKeyboard();
       this._bindHelpHint();
+      this._bindCircuitsToolbar();
+      this._bindMultiSelectToggle();
       this._startAutoSave();
       // Apply mode
       this.setMode('3d');
@@ -299,6 +301,7 @@
       var canvas3D = document.getElementById('canvas-3d');
       var canvasC = document.getElementById('canvas-circuits');
       var transformToolbar = document.getElementById('transform-toolbar');
+      var circuitsToolbar = document.getElementById('circuits-toolbar');
       var leftPanelTitle = document.getElementById('left-panel-title');
       // Show/hide help hint variant
       var hint3D = document.querySelector('.help-hint-3d');
@@ -307,6 +310,7 @@
         if (canvas3D) canvas3D.style.display = 'block';
         if (canvasC) canvasC.className += ' hidden';
         if (transformToolbar) transformToolbar.style.display = 'flex';
+        if (circuitsToolbar) circuitsToolbar.style.display = 'none';
         if (leftPanelTitle) { leftPanelTitle.innerHTML = ''; leftPanelTitle.appendChild(document.createTextNode('Shapes')); }
         if (hint3D) hint3D.className = hint3D.className.replace(/\bhidden\b/g, '').trim();
         if (hintC && hintC.className.indexOf('hidden') === -1) hintC.className += ' hidden';
@@ -316,6 +320,7 @@
         if (canvas3D) canvas3D.style.display = 'none';
         if (canvasC) canvasC.className = canvasC.className.replace(/\bhidden\b/g, '').trim();
         if (transformToolbar) transformToolbar.style.display = 'none';
+        if (circuitsToolbar) circuitsToolbar.style.display = 'flex';
         if (leftPanelTitle) { leftPanelTitle.innerHTML = ''; leftPanelTitle.appendChild(document.createTextNode('Components')); }
         if (hintC) hintC.className = hintC.className.replace(/\bhidden\b/g, '').trim();
         if (hint3D && hint3D.className.indexOf('hidden') === -1) hint3D.className += ' hidden';
@@ -431,6 +436,75 @@
       if (dismiss && hint) {
         dismiss.addEventListener('click', function () {
           hint.className += ' hidden';
+        });
+      }
+    },
+
+    _bindCircuitsToolbar: function () {
+      var self = this;
+      var btns = document.querySelectorAll('.ct-btn');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('click', function (ev) {
+          var tool = ev.currentTarget.getAttribute('data-ctool');
+          var mc = global.ForgeCAD.modeCircuits;
+          if (tool === 'zoomin') mc.zoomIn();
+          else if (tool === 'zoomout') mc.zoomOut();
+          else if (tool === 'zoomfit') mc.zoomFit();
+          else if (tool === 'rotate') {
+            if (mc.selected) {
+              var comp = mc._findComponent(mc.selected);
+              if (comp) {
+                comp.rotation += Math.PI / 2;
+                mc._renderComponent(comp);
+                mc._showProperties(comp.id);
+              }
+            } else {
+              global.ForgeCAD.ui.toast('Select a component first');
+            }
+          } else if (tool === 'duplicate') {
+            if (mc.selected) {
+              mc._duplicateSelected();
+            } else {
+              global.ForgeCAD.ui.toast('Select a component first');
+            }
+          } else if (tool === 'delete') {
+            if (mc.selected) {
+              mc.deleteComponent(mc.selected);
+            } else {
+              global.ForgeCAD.ui.toast('Select a component first');
+            }
+          } else if (tool === 'select') {
+            // Update active state
+            var allBtns = document.querySelectorAll('.ct-btn[data-ctool="select"]');
+            for (var j = 0; j < allBtns.length; j++) {
+              allBtns[j].className = allBtns[j].className.replace(/\bactive\b/g, '').trim();
+            }
+            ev.currentTarget.className += ' active';
+          }
+        });
+      }
+      // Prevent context menu on SVG (right-click is used for pan)
+      var svg = document.getElementById('svg-circuits');
+      if (svg) {
+        svg.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+      }
+    },
+
+    _bindMultiSelectToggle: function () {
+      // The "multi" button in the 3D transform toolbar toggles multi-select mode.
+      // When ON, clicking objects adds them to the selection (no shift needed).
+      var multiBtn = document.querySelector('.tt-btn[data-tool="multi"]');
+      if (multiBtn) {
+        multiBtn.addEventListener('click', function (ev) {
+          var m3d = global.ForgeCAD.mode3D;
+          m3d.multiSelectMode = !m3d.multiSelectMode;
+          if (m3d.multiSelectMode) {
+            multiBtn.className = multiBtn.className.replace(/\bactive\b/g, '').trim() + ' active';
+            global.ForgeCAD.ui.status('Multi-select ON — click objects to add to selection. Click again to toggle off.');
+          } else {
+            multiBtn.className = multiBtn.className.replace(/\bactive\b/g, '').trim();
+            global.ForgeCAD.ui.status('Multi-select OFF');
+          }
         });
       }
     },

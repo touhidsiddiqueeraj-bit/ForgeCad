@@ -509,6 +509,22 @@ canvas, svg { display: block; }
   align-items: center;
   justify-content: center;
 }
+.ct-btn {
+  width: 32px; height: 32px;
+  background: transparent;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-dark .ct-btn { background: #2a3340; color: #c8cdd6; border-color: #0d1119; }
+.theme-dark .ct-btn:hover { background: #353f4f; }
+.theme-dark .ct-btn.active { background: #3b82f6; color: #fff; border-color: #2563eb; }
+.theme-light .ct-btn { background: #f3f4f6; color: #2a3340; border-color: #d1d5db; }
+.theme-light .ct-btn:hover { background: #e5e7eb; }
+.theme-light .ct-btn.active { background: #2563eb; color: #fff; border-color: #1d4ed8; }
 .tt-sep {
   width: 1px;
   height: 24px;

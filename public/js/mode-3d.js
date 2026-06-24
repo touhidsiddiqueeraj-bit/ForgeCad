@@ -35,6 +35,7 @@
     snapEnabled: true,
     snapSize: 1,              // 1 mm
     tool: 'move',
+    multiSelectMode: false,  // toggle via toolbar button — no shift needed
 
     // Animation
     animating: false,
@@ -556,7 +557,8 @@
           walker = walker.parent;
         }
         if (!tracked) tracked = hit;
-        var additive = !!shiftKey;
+        // Multi-select if shift held OR multi-select toggle is on
+        var additive = !!shiftKey || !!this.multiSelectMode;
         if (additive) {
           var idx = this.selected.indexOf(tracked);
           if (idx >= 0) this.selected.splice(idx, 1);
@@ -568,8 +570,8 @@
         this._showProperties();
         global.ForgeCAD.ui.status('Selected: ' + (tracked.userData.name || tracked.userData.shapeType || 'object'));
       } else {
-        // Click empty space — clear selection (unless shift)
-        if (!shiftKey) {
+        // Click empty space — clear selection (unless shift or multi-select mode)
+        if (!shiftKey && !this.multiSelectMode) {
           this.selected = [];
           this._updateSelectionVisual();
           global.ForgeCAD.ui.clearProperties();
@@ -987,33 +989,37 @@
     },
 
     _roofGeometry: function (w, h, d) {
-      // Half-cylinder roof
+      // Half-cylinder roof, centered at origin (y from -h/2 to +h/2)
+      // This matches BoxGeometry centering so position.y = h/2 places it on the ground.
       var seg = global.ForgeCAD.compat.getSegments(12);
-      var hw = w / 2, hd = d / 2, hh = h;
+      var hw = w / 2, hd = d / 2;
       var positions = [];
       var indices = [];
-      // Generate half-cylinder
       var halfSeg = Math.max(4, Math.floor(seg / 2));
+      // Generate half-cylinder vertices (curve in XY plane, extruded along Z)
+      // y = sin(a) * h - h/2  →  ranges from -h/2 (base) to +h/2 (top)
       for (var i = 0; i <= halfSeg; i++) {
         var a = (i / halfSeg) * Math.PI;
         var x = Math.cos(a) * hw;
-        var y = Math.sin(a) * hh;
+        var y = Math.sin(a) * h - h / 2;
         positions.push(x, y, -hd);
         positions.push(x, y,  hd);
       }
       var n = (halfSeg + 1) * 2;
+      // Side faces (the curved part)
       for (var f = 0; f < halfSeg; f++) {
-        var a = f * 2, b = f * 2 + 1, c = (f + 1) * 2, d = (f + 1) * 2 + 1;
-        indices.push(a, b, c); indices.push(b, d, c);
+        var a = f * 2, b = f * 2 + 1, c = (f + 1) * 2, dd = (f + 1) * 2 + 1;
+        indices.push(a, c, b); indices.push(b, c, dd);
       }
-      // End caps
-      var centerL = n / 2, centerR = (n / 2) + 1;
-      positions.push(0, 0, -hd); // left center
-      positions.push(0, 0,  hd); // right center
+      // End caps (flat semi-circle at each end)
+      positions.push(0, -h / 2, -hd); // left cap center (index n)
+      positions.push(0, -h / 2,  hd); // right cap center (index n+1)
       var cl = n, cr = n + 1;
       for (var g = 0; g < halfSeg; g++) {
         var e = g * 2, g2 = (g + 1) * 2;
+        // Left cap (z = -hd, vertices at even indices)
         indices.push(cl, e, g2);
+        // Right cap (z = +hd, vertices at odd indices)
         indices.push(cr, g2 + 1, e + 1);
       }
       var geo = new THREE.BufferGeometry();
@@ -1153,6 +1159,13 @@
         group.attach(obj);
       }
       this._objectsGroup.add(group);
+      // Remove the grouped children from the objects array and add the group instead
+      for (var j = this.objects.length - 1; j >= 0; j--) {
+        if (this.selected.indexOf(this.objects[j]) !== -1) {
+          this.objects.splice(j, 1);
+        }
+      }
+      this.objects.push(group);
       // Replace selection with group
       this.selected = [group];
       this._updateSelectionVisual();

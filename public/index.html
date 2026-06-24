@@ -114,10 +114,23 @@
       <button class="tt-btn" data-tool="rotate" title="Rotate (E)">↻</button>
       <button class="tt-btn" data-tool="scale" title="Scale (R)">⤢</button>
       <span class="tt-sep"></span>
-      <button class="tt-btn" data-tool="group" title="Group (G)">⊕</button>
+      <button class="tt-btn" data-tool="multi" title="Multi-select toggle (hold Shift to add to selection)">⊕</button>
+      <button class="tt-btn" data-tool="group" title="Group (G)">⬒</button>
       <button class="tt-btn" data-tool="hole" title="Toggle Hole (H)">⊖</button>
       <button class="tt-btn" data-tool="duplicate" title="Duplicate (D)">⎘</button>
       <button class="tt-btn" data-tool="delete" title="Delete (Del)">✕</button>
+    </div>
+
+    <!-- Circuits toolbar (circuits mode only) -->
+    <div id="circuits-toolbar" class="floating-toolbar" style="display:none;">
+      <button class="ct-btn active" data-ctool="select" title="Select / Move">✥</button>
+      <button class="ct-btn" data-ctool="rotate" title="Rotate 90°">↻</button>
+      <button class="ct-btn" data-ctool="duplicate" title="Duplicate">⎘</button>
+      <button class="ct-btn" data-ctool="delete" title="Delete">✕</button>
+      <span class="tt-sep"></span>
+      <button class="ct-btn" data-ctool="zoomin" title="Zoom in">＋</button>
+      <button class="ct-btn" data-ctool="zoomout" title="Zoom out">－</button>
+      <button class="ct-btn" data-ctool="zoomfit" title="Fit to view">[ ]</button>
     </div>
 
     <!-- Mobile: bottom sheet trigger -->

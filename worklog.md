@@ -81,3 +81,36 @@ Stage Summary:
   6. ✓ Custom element maker with full pin definition
   7. ✓ 2 guided project tutorials (LED circuit + 3D house) that auto-build the project step-by-step
 - Files modified: mode-circuits.js (full rewrite), tutorial.js (added 2 tutorials + picker + action support), styles.css (bend-handle + drag cursors), README.md (updated features).
+
+---
+Task ID: fixes-4
+Agent: main
+Task: Fix broken roof geometry, fix multi-select/grouping, add circuits transform toolbar, add zoom/pan to breadboard
+
+Work Log:
+- Fixed roof geometry: was using hh=h (uncentered, y from 0 to h) causing it to float above ground. Changed to y = sin(a)*h - h/2, which centers the half-cylinder at origin (y from -h/2 to +h/2). Now position.y = h/2 places it correctly on the ground, matching BoxGeometry convention. Also fixed winding order for side faces and added proper end caps.
+- Fixed group functionality: groupSelected() was not removing children from the objects[] array, causing grouped objects to be double-counted. Now removes grouped children from objects[] and pushes the group instead. After grouping 3 objects, objects.length = 1 (the group).
+- Added multi-select toggle button (⊕) to the 3D transform toolbar. When toggled ON, clicking objects adds them to the selection without holding Shift. Also works with the existing shift-click. Updated _handleClickAt to check both shiftKey and multiSelectMode. Updated empty-space click to respect multiSelectMode.
+- Added circuits transform toolbar (floating, top center, circuits mode only): Select/Move (✥), Rotate 90° (↻), Duplicate (⎘), Delete (✕), Zoom in (＋), Zoom out (－), Fit view ([ ]). Wired all buttons in main.js _bindCircuitsToolbar().
+- Added zoom & pan to circuits breadboard:
+  - SVG viewBox-based zoom/pan system. zoom (0.2x to 5x), panX, panY state.
+  - Mouse wheel zoom (zooms around cursor position).
+  - Middle-mouse or right-mouse drag to pan.
+  - Drag on empty space to pan.
+  - Two-finger pinch zoom on touch devices.
+  - Zoom buttons in toolbar (＋/－/[ ]).
+  - Zoom level shown in status bar.
+  - Zoom/pan state serialized with project.
+- Added _duplicateSelected() method to mode-circuits.js for the toolbar duplicate button.
+- Added contextmenu prevention on SVG (right-click is used for pan).
+- All comprehensive tests pass: roof centered, multi-select toggle works (3/3 selected), group works (1 object after grouping 3), circuits zoom works (125% after zoom in), circuits toolbar works (rotate/duplicate/delete), circuits pan works (121px panX after drag).
+- Regression: smoke test passes. Wire connection still works (verified separately).
+- Screenshots: 34-roof-fixed, 35-multi-select, 36-circuits-zoomed.
+
+Stage Summary:
+- All 5 user-reported issues fixed:
+  1. ✓ Roof geometry fixed — sits on ground properly
+  2. ✓ Multi-select works via toggle button (no shift needed) + group properly removes children
+  3. ✓ Circuits transform toolbar with rotate/duplicate/delete buttons
+  4. ✓ Breadboard zoom (wheel + buttons) and pan (drag empty space / middle-click)
+  5. ✓ Breadboard scales via viewBox (components stay in SVG coords, viewport changes)

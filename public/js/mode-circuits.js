@@ -32,6 +32,13 @@
     gridRows: 20,
     wireStyle: 'manhattan',  // 'manhattan' | 'bezier' | 'direct' | 'custom'
     snapToGrid: true,
+    // Zoom & pan
+    zoom: 1,
+    panX: 0,
+    panY: 0,
+    _panning: false,
+    _panStart: null,
+    multiSelectMode: false,
 
     // Drag state
     _dragComp: null,       // component being dragged
@@ -53,17 +60,25 @@
 
     _drawBreadboard: function () {
       var svg = this.svg;
+      // Set viewBox to reflect zoom & pan. The SVG coordinate system stays
+      // fixed (components don't move), only the viewport changes.
+      var w = this.gridCols * this.gridSpacing + 80;
+      var h = this.gridRows * this.gridSpacing + 80;
+      var vbW = w / this.zoom;
+      var vbH = h / this.zoom;
+      var vbX = -this.panX;
+      var vbY = -this.panY;
+      svg.setAttribute('viewBox', vbX + ' ' + vbY + ' ' + vbW + ' ' + vbH);
+      svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
       // Clear
       while (svg.firstChild) svg.removeChild(svg.firstChild);
-      // Defs for filters
-      var defs = document.createElementNS(this.ns, 'defs');
-      this._ensureGlowFilter(); // will create defs if needed; safe to call
+      this._ensureGlowFilter();
       // Background
       var bg = document.createElementNS(this.ns, 'rect');
-      bg.setAttribute('x', 0);
-      bg.setAttribute('y', 0);
-      bg.setAttribute('width', '100%');
-      bg.setAttribute('height', '100%');
+      bg.setAttribute('x', -1000);
+      bg.setAttribute('y', -1000);
+      bg.setAttribute('width', w + 2000);
+      bg.setAttribute('height', h + 2000);
       bg.setAttribute('class', 'circuits-grid-bg');
       svg.appendChild(bg);
       // Holes
@@ -73,12 +88,12 @@
         for (var c = 0; c < this.gridCols; c++) {
           var cx = this.gridOffsetX + c * this.gridSpacing;
           var cy = this.gridOffsetY + r * this.gridSpacing;
-          var h = document.createElementNS(this.ns, 'circle');
-          h.setAttribute('cx', cx);
-          h.setAttribute('cy', cy);
-          h.setAttribute('r', 2);
-          h.setAttribute('class', 'circuits-hole');
-          holesGroup.appendChild(h);
+          var h2 = document.createElementNS(this.ns, 'circle');
+          h2.setAttribute('cx', cx);
+          h2.setAttribute('cy', cy);
+          h2.setAttribute('r', 2);
+          h2.setAttribute('class', 'circuits-hole');
+          holesGroup.appendChild(h2);
         }
       }
       svg.appendChild(holesGroup);
@@ -116,6 +131,36 @@
       labelG.setAttribute('font-size', '10');
       labelG.textContent = '−';
       svg.appendChild(labelG);
+    },
+
+    _applyZoomPan: function () {
+      var w = this.gridCols * this.gridSpacing + 80;
+      var h = this.gridRows * this.gridSpacing + 80;
+      var vbW = w / this.zoom;
+      var vbH = h / this.zoom;
+      var vbX = -this.panX;
+      var vbY = -this.panY;
+      this.svg.setAttribute('viewBox', vbX + ' ' + vbY + ' ' + vbW + ' ' + vbH);
+    },
+
+    zoomIn: function () {
+      this.zoom = Math.min(5, this.zoom * 1.25);
+      this._applyZoomPan();
+      global.ForgeCAD.ui.status('Zoom: ' + Math.round(this.zoom * 100) + '%');
+    },
+
+    zoomOut: function () {
+      this.zoom = Math.max(0.2, this.zoom / 1.25);
+      this._applyZoomPan();
+      global.ForgeCAD.ui.status('Zoom: ' + Math.round(this.zoom * 100) + '%');
+    },
+
+    zoomFit: function () {
+      this.zoom = 1;
+      this.panX = 0;
+      this.panY = 0;
+      this._applyZoomPan();
+      global.ForgeCAD.ui.status('Zoom: 100%');
     },
 
     _populatePanel: function () {
@@ -220,12 +265,15 @@
       this.svg.addEventListener('mousedown', function (ev) { self._onMouseDown(ev); });
       this.svg.addEventListener('mousemove', function (ev) { self._onMouseMove(ev); });
       this.svg.addEventListener('mouseup',   function (ev) { self._onMouseUp(ev); });
+      this.svg.addEventListener('mouseleave', function (ev) { self._onMouseUp(ev); });
       // Touch
       this.svg.addEventListener('touchstart', function (ev) {
         if (ev.touches.length === 1) self._onMouseDown(ev.touches[0]);
+        else if (ev.touches.length === 2) self._onPinchStart(ev);
       }, { passive: true });
       this.svg.addEventListener('touchmove', function (ev) {
         if (ev.touches.length === 1) self._onMouseMove(ev.touches[0]);
+        else if (ev.touches.length === 2) self._onPinchMove(ev);
       }, { passive: true });
       this.svg.addEventListener('touchend', function (ev) {
         var t = ev.changedTouches[0];
@@ -233,6 +281,38 @@
       }, { passive: true });
       // Click for pin connection / wire bend add
       this.svg.addEventListener('click', function (ev) { self._onClick(ev); });
+      // Wheel zoom
+      this.svg.addEventListener('wheel', function (ev) {
+        ev.preventDefault();
+        var delta = ev.deltaY > 0 ? 0.9 : 1.1;
+        var newZoom = self.zoom * delta;
+        if (newZoom < 0.2) newZoom = 0.2;
+        if (newZoom > 5) newZoom = 5;
+        // Zoom around cursor
+        var pt = self._svgPoint(ev.clientX, ev.clientY);
+        var ratio = newZoom / self.zoom;
+        self.panX = pt.x - (pt.x + self.panX) / ratio;
+        self.panY = pt.y - (pt.y + self.panY) / ratio;
+        self.zoom = newZoom;
+        self._applyZoomPan();
+        global.ForgeCAD.ui.status('Zoom: ' + Math.round(self.zoom * 100) + '%');
+      }, { passive: false });
+    },
+
+    _onPinchStart: function (ev) {
+      var t1 = ev.touches[0], t2 = ev.touches[1];
+      this._pinchDist = Math.sqrt((t2.clientX - t1.clientX) * (t2.clientX - t1.clientX) + (t2.clientY - t1.clientY) * (t2.clientY - t1.clientY));
+      this._pinchZoom = this.zoom;
+    },
+    _onPinchMove: function (ev) {
+      if (!this._pinchDist) return;
+      var t1 = ev.touches[0], t2 = ev.touches[1];
+      var d = Math.sqrt((t2.clientX - t1.clientX) * (t2.clientX - t1.clientX) + (t2.clientY - t1.clientY) * (t2.clientY - t1.clientY));
+      var newZoom = this._pinchZoom * (d / this._pinchDist);
+      if (newZoom < 0.2) newZoom = 0.2;
+      if (newZoom > 5) newZoom = 5;
+      this.zoom = newZoom;
+      this._applyZoomPan();
     },
 
     _svgPoint: function (clientX, clientY) {
@@ -250,6 +330,14 @@
       var target = ev.target;
       this._dragMoved = false;
       this._downPoint = { x: ev.clientX, y: ev.clientY };
+
+      // Middle mouse (button 1) or right mouse (button 2) → start panning
+      if (ev.button === 1 || ev.button === 2) {
+        this._panning = true;
+        this._panStart = { x: ev.clientX, y: ev.clientY, panX: this.panX, panY: this.panY };
+        if (ev.preventDefault) ev.preventDefault();
+        return;
+      }
 
       // Pin hit area? (start wire drag — handled in click for tap, but
       // we also support drag-to-connect for power users)
@@ -276,10 +364,28 @@
           var pt = this._svgPoint(ev.clientX, ev.clientY);
           this._dragOffset = { x: pt.x - comp.x, y: pt.y - comp.y };
         }
+      } else {
+        // Empty area with left mouse → start panning (drag the breadboard)
+        this._panning = true;
+        this._panStart = { x: ev.clientX, y: ev.clientY, panX: this.panX, panY: this.panY };
       }
     },
 
     _onMouseMove: function (ev) {
+      // Panning (middle-mouse or drag on empty space)
+      if (this._panning && this._panStart) {
+        var dx = ev.clientX - this._panStart.x;
+        var dy = ev.clientY - this._panStart.y;
+        // Convert screen delta to SVG units (account for zoom + viewport size)
+        var rect = this.svg.getBoundingClientRect();
+        var vbW = parseFloat(this.svg.getAttribute('viewBox').split(' ')[2]);
+        var scale = vbW / rect.width;
+        this.panX = this._panStart.panX + dx * scale;
+        this.panY = this._panStart.panY + dy * scale;
+        this._applyZoomPan();
+        this._dragMoved = true;
+        return;
+      }
       // Dragging a component
       if (this._dragComp) {
         var pt = this._svgPoint(ev.clientX, ev.clientY);
@@ -320,6 +426,8 @@
       this._dragComp = null;
       this._dragBendWire = null;
       this._dragBendIdx = -1;
+      this._panning = false;
+      this._panStart = null;
     },
 
     _onClick: function (ev) {
@@ -1180,6 +1288,23 @@
       });
     },
 
+    _duplicateSelected: function () {
+      if (!this.selected) return;
+      var comp = this._findComponent(this.selected);
+      if (!comp) return;
+      var newId = 'c' + Date.now() + '_' + this.components.length;
+      var newComp = JSON.parse(JSON.stringify(comp));
+      newComp.id = newId;
+      newComp.x += 60;
+      newComp.y += 40;
+      // Preserve custom type reference
+      if (comp._customType) newComp._customType = comp._customType;
+      this.components.push(newComp);
+      this._renderComponent(newComp);
+      this.selectComponent(newId);
+      global.ForgeCAD.ui.status('Duplicated ' + comp.type);
+    },
+
     deleteComponent: function (id) {
       for (var i = 0; i < this.components.length; i++) {
         if (this.components[i].id === id) { this.components.splice(i, 1); break; }
@@ -1329,6 +1454,9 @@
         mode: 'circuits',
         wireStyle: this.wireStyle,
         snapToGrid: this.snapToGrid,
+        zoom: this.zoom,
+        panX: this.panX,
+        panY: this.panY,
         components: JSON.parse(JSON.stringify(this.components)),
         wires: JSON.parse(JSON.stringify(this.wires)),
         customTypes: JSON.parse(JSON.stringify(this.customTypes))
@@ -1345,6 +1473,10 @@
       if (!data) return;
       if (data.wireStyle) this.wireStyle = data.wireStyle;
       if (data.snapToGrid !== undefined) this.snapToGrid = data.snapToGrid;
+      if (data.zoom) this.zoom = data.zoom;
+      if (data.panX) this.panX = data.panX;
+      if (data.panY) this.panY = data.panY;
+      this._applyZoomPan();
       if (data.customTypes) this.customTypes = data.customTypes;
       if (!data.components) return;
       for (var i = 0; i < data.components.length; i++) {
