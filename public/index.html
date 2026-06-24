@@ -29,9 +29,13 @@
       <input id="proj-name" type="text" value="Untitled Project" spellcheck="false">
     </div>
     <div class="topbar-actions">
+      <button class="tb-btn" id="btn-projects" title="My projects (IndexedDB)">📁 Projects</button>
       <button class="tb-btn" id="btn-import" title="Import project (.json)">Import</button>
       <button class="tb-btn" id="btn-export-proj" title="Save project (.json)">Save</button>
       <button class="tb-btn primary" id="btn-export-menu" title="Export model">Export ▾</button>
+      <button class="tb-btn icon-btn" id="btn-tutorial" title="Tutorial">
+        <span>?</span>
+      </button>
       <button class="tb-btn icon-btn" id="btn-theme" title="Toggle light/dark">
         <span id="theme-icon">◐</span>
       </button>
@@ -176,12 +180,15 @@
 <script src="vendor/GLTFExporter.js"></script>
 
 <!-- App scripts (ES5, load order matters) -->
+<script src="js/polyfills.js"></script>
 <script src="js/compat.js"></script>
 <script src="js/theme.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/storage.js"></script>
 <script src="js/exporters.js"></script>
 <script src="js/mode-3d.js"></script>
 <script src="js/mode-circuits.js"></script>
+<script src="js/tutorial.js"></script>
 <script src="js/main.js"></script>
 
 </body>

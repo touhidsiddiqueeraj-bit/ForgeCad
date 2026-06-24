@@ -23,3 +23,27 @@ Stage Summary:
 - Circuits: pins clickable, wires connect properly, LED lights up when sim runs.
 - Selection visual is now obvious (yellow bbox + blue emissive tint).
 - No regressions: smoke test passes with 0 errors, all exports still work.
+
+---
+Task ID: features-2
+Agent: main
+Task: Add tutorials, fix object properties, add wire routing styles, add IndexedDB storage, write README.md and architecture.md
+
+Work Log:
+- Fixed properties panel: ui.js propRow3 was setting data-prop only, not id. Added id attribute. _bindPropertyInputs now uses both input+change events for live updates. _applyProp now correctly handles dimensions (was setting userData.w instead of userData.dimensions.w).
+- Added _refreshPropertyValues to update inputs during drag without rebuilding panel (preserves focus).
+- Added wire routing styles: manhattan (L-shape, default), bezier (cubic curve), direct (straight line). New wireStyle state, dropdown in left panel, _renderWire supports all 3 styles, preview matches style. Style is saved in serialized data.
+- Created storage.js: IndexedDB-based project persistence with autoSave slot, listProjects, loadProject, deleteProject, renameProject, stats. Falls back to localStorage if IndexedDB unavailable.
+- Added 📁 Projects button to topbar. Built projects modal with thumbnails (48x48 PNG captured from canvas), load/rename/delete actions, storage stats footer showing backend + quota.
+- Added auto-save: every 30 seconds + beforeunload. On startup, prompts to restore previous session.
+- Created tutorial.js with two interactive tutorials: 3d-basics (7 steps) and circuits-basics (6 steps). Each step spotlights target element with yellow border + dimmed backdrop + popover with Prev/Next/Skip buttons. Keyboard: Esc/Arrow keys.
+- Added ? tutorial button to topbar.
+- Updated README.md with all new features, quick start, keyboard shortcuts, known limitations.
+- Wrote architecture.md covering: high-level overview, module layout, module responsibilities, data flow diagrams, key design decisions (why no framework, why pointer events, why two pin elements, why pointer-events:none !important on wire-preview, why class-based theming, why IndexedDB+localStorage), performance considerations, browser compatibility notes, testing approach, future work.
+
+Stage Summary:
+- All 5 user requests completed: tutorials, properties fix, wire routing styles, IndexedDB storage, README+architecture docs.
+- All tests pass: smoke test 0 errors, bugfix test 0 errors.
+- New screenshots: 21-new-features, 22-tutorial-step1, 23-tutorial-step2, 24-tutorial-circuits, 25-projects-modal.
+- Files created: js/storage.js, js/tutorial.js, architecture.md.
+- Files modified: index.html (added Projects + Tutorial buttons, added script tags), css/styles.css (wire-preview !important), js/ui.js (propRow3 adds id), js/mode-3d.js (input events, _refreshPropertyValues, _applyProp fix), js/mode-circuits.js (wireStyle, wire style selector, input events), js/main.js (projects modal, autosave, tutorial button binding), README.md.

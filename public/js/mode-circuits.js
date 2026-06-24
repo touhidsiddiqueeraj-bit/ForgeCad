@@ -26,6 +26,7 @@
     gridOffsetY: 40,
     gridCols: 30,
     gridRows: 20,
+    wireStyle: 'manhattan',  // 'manhattan' | 'bezier' | 'direct'
 
     /* ==================== INIT ==================== */
     init: function () {
@@ -120,6 +121,14 @@
         }
         html += '</div>';
       }
+      html += '<div class="shape-section-label">Wire Style</div>';
+      html += '<div style="padding:8px 4px;">';
+      html += '<select id="wire-style-select" style="width:100%;padding:6px;font-size:12px;background:' + (global.ForgeCAD.theme.current === 'dark' ? '#161b25' : '#fff') + ';color:inherit;border:1px solid ' + (global.ForgeCAD.theme.current === 'dark' ? '#353f4f' : '#d1d5db') + ';border-radius:3px;">';
+      html += '<option value="manhattan"' + (this.wireStyle === 'manhattan' ? ' selected' : '') + '>Manhattan (L-shape)</option>';
+      html += '<option value="bezier"' + (this.wireStyle === 'bezier' ? ' selected' : '') + '>Curved (bezier)</option>';
+      html += '<option value="direct"' + (this.wireStyle === 'direct' ? ' selected' : '') + '>Direct (straight)</option>';
+      html += '</select>';
+      html += '</div>';
       html += '<div class="shape-section-label">Simulate</div>';
       html += '<div style="padding:8px 4px;">';
       html += '<button class="tb-btn primary" id="sim-run" style="width:100%;margin-bottom:6px;">▶ Run</button>';
@@ -135,6 +144,17 @@
       }
       document.getElementById('sim-run').addEventListener('click', function () { self.runSim(); });
       document.getElementById('sim-stop').addEventListener('click', function () { self.stopSim(); });
+      var wireStyleSelect = document.getElementById('wire-style-select');
+      if (wireStyleSelect) {
+        wireStyleSelect.addEventListener('change', function () {
+          self.wireStyle = wireStyleSelect.value;
+          // Re-render all existing wires in the new style
+          for (var i = 0; i < self.wires.length; i++) {
+            self._renderWire(self.wires[i]);
+          }
+          global.ForgeCAD.ui.status('Wire style: ' + self.wireStyle);
+        });
+      }
     },
 
     _glyph: function (type) {
@@ -468,9 +488,30 @@
       var p2 = this._findPin(wire.to);
       if (!p1 || !p2) return;
       var line = document.createElementNS(this.ns, 'path');
-      // Manhattan routing
-      var midX = (p1.x + p2.x) / 2;
-      var d = 'M ' + p1.x + ' ' + p1.y + ' L ' + midX + ' ' + p1.y + ' L ' + midX + ' ' + p2.y + ' L ' + p2.x + ' ' + p2.y;
+      var d;
+      // Routing style: 'manhattan' (L-shape) or 'bezier' (smooth curve) or 'direct' (straight)
+      var style = this.wireStyle || 'manhattan';
+      if (style === 'bezier') {
+        // Smooth cubic bezier — control points extend horizontally from each pin
+        var dx = p2.x - p1.x;
+        var dy = p2.y - p1.y;
+        // Control point offset — at least 30, scales with distance
+        var cpLen = Math.max(30, Math.abs(dx) * 0.5);
+        var c1x = p1.x + (Math.abs(dx) > Math.abs(dy) ? cpLen * Math.sign(dx || 1) : 0);
+        var c1y = p1.y + (Math.abs(dx) > Math.abs(dy) ? 0 : cpLen * Math.sign(dy || 1));
+        var c2x = p2.x - (Math.abs(dx) > Math.abs(dy) ? cpLen * Math.sign(dx || 1) : 0);
+        var c2y = p2.y - (Math.abs(dx) > Math.abs(dy) ? 0 : cpLen * Math.sign(dy || 1));
+        d = 'M ' + p1.x + ' ' + p1.y +
+            ' C ' + c1x + ' ' + c1y + ' ' + c2x + ' ' + c2y + ' ' +
+            p2.x + ' ' + p2.y;
+      } else if (style === 'direct') {
+        // Straight line
+        d = 'M ' + p1.x + ' ' + p1.y + ' L ' + p2.x + ' ' + p2.y;
+      } else {
+        // Manhattan (default) — L-shape routing
+        var midX = (p1.x + p2.x) / 2;
+        d = 'M ' + p1.x + ' ' + p1.y + ' L ' + midX + ' ' + p1.y + ' L ' + midX + ' ' + p2.y + ' L ' + p2.x + ' ' + p2.y;
+      }
       line.setAttribute('d', d);
       line.setAttribute('class', 'wire-line');
       line.setAttribute('data-wire-id', wire.id);
@@ -500,12 +541,28 @@
       if (!this.wireStartPin || mx == null) return;
       var p1 = this._findPin(this.wireStartPin);
       if (!p1) return;
-      var line = document.createElementNS(this.ns, 'line');
+      var line = document.createElementNS(this.ns, 'path');
+      // Match the current wire style for preview
+      var style = this.wireStyle || 'manhattan';
+      var d;
+      if (style === 'bezier') {
+        var dx = mx - p1.x, dy = my - p1.y;
+        var cpLen = Math.max(30, Math.abs(dx) * 0.5);
+        var c1x = p1.x + (Math.abs(dx) > Math.abs(dy) ? cpLen * Math.sign(dx || 1) : 0);
+        var c1y = p1.y + (Math.abs(dx) > Math.abs(dy) ? 0 : cpLen * Math.sign(dy || 1));
+        var c2x = mx - (Math.abs(dx) > Math.abs(dy) ? cpLen * Math.sign(dx || 1) : 0);
+        var c2y = my - (Math.abs(dx) > Math.abs(dy) ? 0 : cpLen * Math.sign(dy || 1));
+        d = 'M ' + p1.x + ' ' + p1.y + ' C ' + c1x + ' ' + c1y + ' ' + c2x + ' ' + c2y + ' ' + mx + ' ' + my;
+      } else if (style === 'direct') {
+        d = 'M ' + p1.x + ' ' + p1.y + ' L ' + mx + ' ' + my;
+      } else {
+        var midX = (p1.x + mx) / 2;
+        d = 'M ' + p1.x + ' ' + p1.y + ' L ' + midX + ' ' + p1.y + ' L ' + midX + ' ' + my + ' L ' + mx + ' ' + my;
+      }
       line.setAttribute('id', 'wire-preview');
-      line.setAttribute('x1', p1.x); line.setAttribute('y1', p1.y);
-      line.setAttribute('x2', mx); line.setAttribute('y2', my);
+      line.setAttribute('d', d);
       line.setAttribute('class', 'wire-line wire-preview');
-      line.setAttribute('opacity', 0.4);
+      line.setAttribute('opacity', 0.6);
       // Critical: preview must not intercept clicks — otherwise the user
       // can't click the second pin because the preview line is on top of it.
       line.setAttribute('pointer-events', 'none');
@@ -586,14 +643,17 @@
       var bind = function (id, key, parser) {
         var el = document.getElementById(id);
         if (!el) return;
-        el.addEventListener('change', function () {
+        var handler = function () {
           var v = parser ? parser(el.value) : el.value;
           comp.props[key] = v;
           if (key === 'color') {
             var sw = document.getElementById('current-color-swatch');
             if (sw) sw.style.background = v;
+            self._renderComponent(comp);
           }
-        });
+        };
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler);
       };
       bind('prop-voltage', 'voltage', parseFloat);
       bind('prop-resistance', 'resistance', parseFloat);
@@ -618,15 +678,18 @@
       // Position
       ['cx','cy','cr'].forEach(function (id, idx) {
         var el = document.getElementById(id);
+        if (!el) el = document.querySelector('[data-prop="' + id + '"]');
         if (el) {
-          el.addEventListener('change', function () {
+          var posHandler = function () {
             var v = parseFloat(el.value);
             if (isNaN(v)) return;
             if (idx === 0) comp.x = v;
             else if (idx === 1) comp.y = v;
             else comp.rotation = v * Math.PI / 180;
             self._renderComponent(comp);
-          });
+          };
+          el.addEventListener('input', posHandler);
+          el.addEventListener('change', posHandler);
         }
       });
       // Buttons
@@ -815,6 +878,7 @@
       return {
         version: 1,
         mode: 'circuits',
+        wireStyle: this.wireStyle,
         components: JSON.parse(JSON.stringify(this.components)),
         wires: JSON.parse(JSON.stringify(this.wires))
       };
@@ -829,6 +893,7 @@
       this.wires = [];
       this._drawBreadboard();
       if (!data || !data.components) return;
+      if (data.wireStyle) this.wireStyle = data.wireStyle;
       for (var i = 0; i < data.components.length; i++) {
         var c = data.components[i];
         this.components.push(c);
@@ -840,6 +905,8 @@
           this._renderWire(data.wires[j]);
         }
       }
+      // Refresh the panel to reflect the loaded wire style
+      this._populatePanel();
       global.ForgeCAD.ui.toast('Loaded ' + data.components.length + ' components');
     },
 

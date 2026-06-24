@@ -157,8 +157,11 @@
     propRow3: function (label, vals, keys, onUpdate) {
       var html = '<div class="prop-row"><label>' + label + '</label><div class="prop-row-three">';
       for (var i = 0; i < 3; i++) {
+        // IMPORTANT: each input needs both id (for getElementById lookups
+        // in _bindPropertyInputs) and data-prop (for querySelector fallbacks).
+        // The id must be unique on the page — keys are already unique per row.
         html += '<div class="axis-input"><span>' + 'XYZ'[i] + '</span>' +
-                '<input type="number" step="0.1" data-prop="' + keys[i] + '" value="' + (vals[i] != null ? vals[i] : 0) + '">' +
+                '<input type="number" step="0.1" id="' + keys[i] + '" data-prop="' + keys[i] + '" value="' + (vals[i] != null ? vals[i] : 0) + '">' +
                 '</div>';
       }
       html += '</div></div>';

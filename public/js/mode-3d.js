@@ -525,6 +525,7 @@
         target.scale.z = this._dragStartScale.z * factor;
       }
       this._updateSelectionVisual();
+      this._refreshPropertyValues();
     },
 
     /* ==================== CLICK HANDLER (selection) ==================== */
@@ -755,14 +756,22 @@
 
     _bindPropertyInputs: function (obj) {
       var self = this;
+      // Use 'input' event for live updates as user types, plus 'change' for
+      // browsers that don't fire 'input' reliably on number inputs.
       var bind = function (id, key, isNum, mult) {
         var el = document.getElementById(id);
+        if (!el) {
+          // Fallback: look up by data-prop
+          el = document.querySelector('[data-prop="' + id + '"]');
+        }
         if (!el) return;
-        el.addEventListener('change', function () {
+        var handler = function () {
           var v = isNum ? parseFloat(el.value) : el.value;
           if (isNum && isNaN(v)) return;
           self._applyProp(obj, key, v, mult);
-        });
+        };
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler);
       };
       bind('px', 'position.x', true, 1);
       bind('py', 'position.y', true, 1);
@@ -779,14 +788,16 @@
 
       var colorText = document.getElementById('current-color-text');
       if (colorText) {
-        colorText.addEventListener('change', function () {
+        var colorHandler = function () {
           var v = colorText.value.trim();
           if (/^#[0-9a-f]{6}$/i.test(v) || /^#[0-9a-f]{3}$/i.test(v)) {
             obj.material.color.set(v);
             var sw = document.getElementById('current-color-swatch');
             if (sw) sw.style.background = v;
           }
-        });
+        };
+        colorText.addEventListener('input', colorHandler);
+        colorText.addEventListener('change', colorHandler);
       }
       var palBtns = document.querySelectorAll('.color-swatch-mini');
       for (var i = 0; i < palBtns.length; i++) {
@@ -811,18 +822,49 @@
     _applyProp: function (obj, key, value, mult) {
       if (!obj) return;
       var parts = key.split('.');
-      var target = obj;
-      if (parts[0] === 'dimensions') target = obj.userData;
       if (parts[0] === 'position' || parts[0] === 'rotation' || parts[0] === 'scale') {
-        target[parts[0]][parts[1]] = value * (mult || 1);
-      } else {
-        target[parts[1]] = value;
-      }
-      if (parts[0] === 'dimensions') {
+        obj[parts[0]][parts[1]] = value * (mult || 1);
+      } else if (parts[0] === 'dimensions') {
+        // userData.dimensions.w / .h / .d
+        if (!obj.userData.dimensions) obj.userData.dimensions = { w: 20, h: 20, d: 20 };
+        obj.userData.dimensions[parts[1]] = value * (mult || 1);
         // Rebuild geometry with new dimensions
         this._rebuildGeometry(obj);
+      } else {
+        // Simple property on userData
+        obj.userData[parts[0]] = value;
       }
       this._updateSelectionVisual();
+      // Don't re-render the properties panel here — it would steal focus
+      // from the input the user is typing in. The values will sync on next
+      // selection or drag end.
+    },
+
+    /* Refresh the values shown in the properties panel to match the
+       currently-selected object's state. Called after drag, etc.
+       Does NOT rebuild the panel (preserves input focus). */
+    _refreshPropertyValues: function () {
+      if (this.selected.length !== 1) return;
+      var obj = this.selected[0];
+      var p = obj.position, r = obj.rotation, s = obj.scale;
+      var dim = obj.userData.dimensions || { w: 20, h: 20, d: 20 };
+      var setVal = function (id, val) {
+        var el = document.getElementById(id);
+        if (!el) el = document.querySelector('[data-prop="' + id + '"]');
+        if (el && document.activeElement !== el) el.value = val;
+      };
+      setVal('px', round1(p.x));
+      setVal('py', round1(p.y));
+      setVal('pz', round1(p.z));
+      setVal('rx', round1(r.x * 180 / Math.PI));
+      setVal('ry', round1(r.y * 180 / Math.PI));
+      setVal('rz', round1(r.z * 180 / Math.PI));
+      setVal('sx', round2(s.x));
+      setVal('sy', round2(s.y));
+      setVal('sz', round2(s.z));
+      setVal('dw', round1(dim.w));
+      setVal('dh', round1(dim.h));
+      setVal('dd', round1(dim.d));
     },
 
     _rebuildGeometry: function (obj) {
