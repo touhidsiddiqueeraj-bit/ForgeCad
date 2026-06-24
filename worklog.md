@@ -218,3 +218,45 @@ Stage Summary:
   1. ✓ Multimeter returns to zero (0.00/0.000) when no input exists, instead of '---'
   2. ✓ Resistance mode works without a battery (uses meter's internal source, measures 470Ω correctly)
   3. ✓ Properties panel widened to 280px and X/Y/Z inputs stacked vertically — no more overflow
+
+---
+Task ID: release-prep
+Agent: main
+Task: Update README and architecture.md, prepare for GitHub release
+
+Work Log:
+- Rewrote public/README.md (9.1KB) for release:
+  - Removed "Low-End Tinkercad Clone" branding — now "3D modeler and circuit simulator"
+  - Added all current features: 20 circuit components, XYZ gizmo, multimeter with nodal analysis, 4 wire routing styles, zoom/pan, power-on animations, wire deletion, custom element maker, 4 tutorials
+  - Added deploy instructions (GitHub Pages, Netlify, Vercel, any static host)
+  - Updated browser support table
+  - Updated performance tier logic (sustained low FPS threshold)
+  - Updated file layout (added logo.svg, tutorial.js, storage.js)
+  - Updated keyboard shortcuts (added circuits shortcuts, tutorial shortcuts)
+  - Updated known limitations (nodal analysis instead of "simplified")
+  - Added technology section, contributing section
+- Rewrote public/architecture.md (25.9KB) for release:
+  - Updated module table with accurate line counts (mode-3d: 1691, mode-circuits: 2075, etc.)
+  - Added 3.7 mode-3d.js: gizmo details, multi-select, axis-constrained drag
+  - Added 3.8 mode-circuits.js: 20 components, zoom/pan, wire editing, circuit solver with nodal analysis
+  - Updated data flow diagrams: gizmo drag, multimeter measurement
+  - Added design decisions 5.9 (nodal analysis), 5.10 (gizmo scaling), 5.11 (sustained low FPS)
+  - Updated future work
+- Created root-level README.md (1.6KB) — concise overview with links to public/README.md and architecture.md
+- Created LICENSE (MIT, 1KB)
+- Updated .gitignore to exclude dev-only files: skills/, .zscripts/, upload/, download/, scripts/, worklog.md, db/, examples/, mini-services/
+- Verified all component counts (20 circuit components, 11 3D shapes, 4 tutorials)
+- Verified file line counts match docs
+- Final smoke test: 0 errors
+
+Stage Summary:
+- Project is release-ready for GitHub:
+  - Root README.md (concise overview + links)
+  - LICENSE (MIT)
+  - .gitignore (excludes dev files)
+  - public/README.md (full feature documentation)
+  - public/architecture.md (detailed technical docs)
+  - public/ (the actual app — static files, no build step)
+  - src/app/page.tsx (Next.js entry, redirects to /index.html)
+- All documentation is accurate and up-to-date with the current codebase
+- No dev artifacts (worklog, test scripts, screenshots) would be committed

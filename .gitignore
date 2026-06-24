@@ -50,5 +50,21 @@ test
 prompt
 
 server.log
-# Skills directory
+# Skills directory (dev environment, not part of the app)
 /skills/
+# Z-scripts (dev environment)
+/.zscripts/
+# Upload directory (user pasted images during dev)
+/upload/
+# Download directory (test outputs)
+/download/
+# Scripts directory (test scripts, not part of app)
+/scripts/
+# Worklog (dev log)
+worklog.md
+# Prisma database
+/db/
+# Examples
+/examples/
+# Mini-services
+/mini-services/
