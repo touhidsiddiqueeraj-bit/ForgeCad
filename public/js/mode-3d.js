@@ -1051,33 +1051,36 @@
     _rebuildGeometry: function (obj) {
       var type = obj.userData.shapeType;
       var dim = obj.userData.dimensions || { w: 20, h: 20, d: 20 };
+      var bevel = obj.userData.bevel || 0;
       var compat = global.ForgeCAD.compat;
       var seg = compat.getSegments(24);
       var geo = null;
       switch (type) {
-        case 'box': geo = new THREE.BoxGeometry(dim.w, dim.h, dim.d); break;
+        case 'box':
+          if (bevel > 0) { geo = this._roundedBoxGeometry(dim.w, dim.h, dim.d, bevel); }
+          else { geo = new THREE.BoxGeometry(dim.w, dim.h, dim.d); }
+          break;
         case 'sphere': geo = new THREE.SphereGeometry(dim.w / 2, Math.max(8, seg), Math.max(6, seg / 2)); break;
         case 'cylinder': geo = new THREE.CylinderGeometry(dim.w / 2, dim.w / 2, dim.h, Math.max(8, seg)); break;
         case 'cone': geo = new THREE.ConeGeometry(dim.w / 2, dim.h, Math.max(8, seg)); break;
         case 'torus': geo = new THREE.TorusGeometry(dim.w / 2, dim.d / 4, Math.max(6, seg / 2), Math.max(8, seg)); break;
-        case 'wedge':
-          geo = this._wedgeGeometry(dim.w, dim.h, dim.d);
-          break;
-        case 'roof':
-          geo = this._roofGeometry(dim.w, dim.h, dim.d);
-          break;
-        case 'text':
-          // Text uses FontLoader async — skip rebuilding
-          return;
-        case 'polygon':
-          geo = this._polygonGeometry(dim.w, dim.h, 6);
-          break;
-        case 'tube':
-          geo = new THREE.TorusGeometry(dim.w / 2, Math.max(1, dim.d / 8), Math.max(6, seg / 2), Math.max(8, seg));
-          break;
-        case 'heart':
-          geo = this._heartGeometry(dim.w);
-          break;
+        case 'pyramid': geo = this._pyramidGeometry(dim.w, dim.h, dim.d); break;
+        case 'prism': geo = this._prismGeometry(dim.w, dim.h, dim.d); break;
+        case 'hemisphere': geo = this._hemisphereGeometry(dim.w); break;
+        case 'capsule': geo = this._capsuleGeometry(dim.w, dim.h); break;
+        case 'wedge': geo = this._wedgeGeometry(dim.w, dim.h, dim.d); break;
+        case 'roof': geo = this._roofGeometry(dim.w, dim.h, dim.d); break;
+        case 'text': return;
+        case 'polygon': geo = this._polygonGeometry(dim.w, dim.h, 6); break;
+        case 'tube': geo = new THREE.TorusGeometry(dim.w / 2, Math.max(1, dim.d / 8), Math.max(6, seg / 2), Math.max(8, seg)); break;
+        case 'heart': geo = this._heartGeometry(dim.w, bevel); break;
+        case 'star': geo = this._starGeometry(dim.w, bevel); break;
+        case 'cross': geo = this._crossGeometry(dim.w, bevel); break;
+        case 'gear': geo = this._gearGeometry(dim.w, bevel); break;
+        case 'tetra': geo = this._tetraGeometry(dim.w); break;
+        case 'octa': geo = this._octaGeometry(dim.w); break;
+        case 'arrow': geo = this._arrowGeometry(dim.w); break;
+        case 'spring': geo = this._springGeometry(dim.w, dim.h); break;
         default: return;
       }
       if (geo) {
@@ -1102,12 +1105,23 @@
         case 'cylinder': geo = new THREE.CylinderGeometry(10, 10, 20, Math.max(8, seg)); break;
         case 'cone': geo = new THREE.ConeGeometry(10, 20, Math.max(8, seg)); break;
         case 'torus': geo = new THREE.TorusGeometry(10, 3, Math.max(6, seg / 2), Math.max(8, seg)); break;
+        case 'pyramid': geo = this._pyramidGeometry(20, 20, 20); break;
+        case 'prism': geo = this._prismGeometry(20, 20, 20); break;
+        case 'hemisphere': geo = this._hemisphereGeometry(20); dim = { w: 20, h: 10, d: 20 }; break;
+        case 'capsule': geo = this._capsuleGeometry(10, 20); dim = { w: 10, h: 20, d: 10 }; break;
         case 'wedge': geo = this._wedgeGeometry(20, 20, 20); dim = { w: 20, h: 20, d: 20 }; break;
         case 'roof': geo = this._roofGeometry(20, 20, 20); dim = { w: 20, h: 20, d: 20 }; break;
-        case 'text': this._addTextShape('Forge'); return;
+        case 'text': this._addTextShapePrompt(); return;
         case 'polygon': geo = this._polygonGeometry(20, 10, 6); dim = { w: 20, h: 10, d: 20 }; break;
         case 'tube': geo = new THREE.TorusGeometry(10, 2, Math.max(6, seg / 2), Math.max(8, seg)); break;
-        case 'heart': geo = this._heartGeometry(20); dim = { w: 20, h: 18, d: 4 }; break;
+        case 'heart': geo = this._heartGeometry(20, 0); dim = { w: 20, h: 18, d: 4 }; break;
+        case 'star': geo = this._starGeometry(20, 0); dim = { w: 20, h: 20, d: 5 }; break;
+        case 'cross': geo = this._crossGeometry(20, 0); dim = { w: 20, h: 20, d: 5 }; break;
+        case 'gear': geo = this._gearGeometry(20, 0); dim = { w: 20, h: 20, d: 5 }; break;
+        case 'tetra': geo = this._tetraGeometry(20); dim = { w: 20, h: 20, d: 20 }; break;
+        case 'octa': geo = this._octaGeometry(20); dim = { w: 20, h: 20, d: 20 }; break;
+        case 'arrow': geo = this._arrowGeometry(20); dim = { w: 20, h: 20, d: 5 }; break;
+        case 'spring': geo = this._springGeometry(20, 20); dim = { w: 20, h: 20, d: 20 }; break;
         default:
           global.ForgeCAD.ui.toast('Unknown shape: ' + type);
           return;
@@ -1247,8 +1261,7 @@
       return geo;
     },
 
-    _heartGeometry: function (w) {
-      // Simple heart shape — extruded
+    _heartGeometry: function (w, bevel) {
       var shape = new THREE.Shape();
       var s = w / 16;
       shape.moveTo(0, 5 * s);
@@ -1256,10 +1269,248 @@
       shape.bezierCurveTo(-25 * s, 0, -10 * s, -10 * s, 0, -10 * s);
       shape.bezierCurveTo(10 * s, -10 * s, 25 * s, 0, 15 * s, 8 * s);
       shape.bezierCurveTo(5 * s, 15 * s, 0, 5 * s, 0, 5 * s);
-      var extr = { depth: w / 5, bevelEnabled: false };
+      var extr = {
+        depth: w / 5,
+        bevelEnabled: bevel > 0,
+        bevelThickness: bevel || 0,
+        bevelSize: bevel || 0,
+        bevelSegments: 2
+      };
       var geo = new THREE.ExtrudeGeometry(shape, extr);
       geo.center();
       return geo;
+    },
+
+    _roundedBoxGeometry: function (w, h, d, r) {
+      var hw = w / 2, hh = h / 2;
+      r = Math.min(r, hw * 0.9, hh * 0.9);
+      var shape = new THREE.Shape();
+      shape.moveTo(-hw + r, -hh);
+      shape.lineTo(hw - r, -hh);
+      shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+      shape.lineTo(hw, hh - r);
+      shape.quadraticCurveTo(hw, hh, hw - r, hh);
+      shape.lineTo(-hw + r, hh);
+      shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+      shape.lineTo(-hw, -hh + r);
+      shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+      var extr = { depth: d, bevelEnabled: true, bevelThickness: r * 0.5, bevelSize: r * 0.5, bevelSegments: 3 };
+      var geo = new THREE.ExtrudeGeometry(shape, extr);
+      geo.center();
+      return geo;
+    },
+
+    _pyramidGeometry: function (w, h, d) {
+      var hw = w / 2, hd = d / 2, hh = h / 2;
+      var geo = new THREE.BufferGeometry();
+      var vertices = new Float32Array([
+        -hw, -hh, hd, hw, -hh, hd, hw, -hh, -hd,
+        -hw, -hh, hd, hw, -hh, -hd, -hw, -hh, -hd,
+        -hw, -hh, hd, hw, -hh, hd, 0, hh, 0,
+        hw, -hh, hd, hw, -hh, -hd, 0, hh, 0,
+        hw, -hh, -hd, -hw, -hh, -hd, 0, hh, 0,
+        -hw, -hh, -hd, -hw, -hh, hd, 0, hh, 0
+      ]);
+      geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geo.computeVertexNormals();
+      return geo;
+    },
+
+    _prismGeometry: function (w, h, d) {
+      var hw = w / 2, hd = d / 2, hh = h / 2;
+      var geo = new THREE.BufferGeometry();
+      var vertices = new Float32Array([
+        -hw, -hh, hd, hw, -hh, hd, 0, hh, hd,
+        -hw, -hh, -hd, 0, hh, -hd, hw, -hh, -hd,
+        -hw, -hh, hd, -hw, -hh, -hd, hw, -hh, -hd,
+        -hw, -hh, hd, hw, -hh, -hd, hw, -hh, hd,
+        -hw, -hh, hd, 0, hh, hd, 0, hh, -hd,
+        -hw, -hh, hd, 0, hh, -hd, -hw, -hh, -hd,
+        hw, -hh, hd, hw, -hh, -hd, 0, hh, -hd,
+        hw, -hh, hd, 0, hh, -hd, 0, hh, hd
+      ]);
+      geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geo.computeVertexNormals();
+      return geo;
+    },
+
+    _hemisphereGeometry: function (w) {
+      var r = w / 2;
+      var seg = global.ForgeCAD.compat.getSegments(16);
+      return new THREE.SphereGeometry(r, Math.max(8, seg), Math.max(6, seg / 2), 0, Math.PI * 2, 0, Math.PI / 2);
+    },
+
+    _capsuleGeometry: function (w, h) {
+      var r = w / 2;
+      var cylH = Math.max(1, h - w);
+      var seg = global.ForgeCAD.compat.getSegments(12);
+      var cylGeo = new THREE.CylinderGeometry(r, r, cylH, Math.max(8, seg));
+      var topGeo = new THREE.SphereGeometry(r, Math.max(8, seg), Math.max(6, seg / 2), 0, Math.PI * 2, 0, Math.PI / 2);
+      var botGeo = new THREE.SphereGeometry(r, Math.max(8, seg), Math.max(6, seg / 2), 0, Math.PI * 2, 0, Math.PI / 2);
+      var merged = new THREE.BufferGeometry();
+      var positions = [];
+      var indices = [];
+      var offset = 0;
+      var cylPos = cylGeo.attributes.position.array;
+      var cylIdx = cylGeo.index ? cylGeo.index.array : null;
+      for (var i = 0; i < cylPos.length; i++) positions.push(cylPos[i]);
+      if (cylIdx) { for (var j = 0; j < cylIdx.length; j++) indices.push(cylIdx[j] + offset); }
+      offset += cylPos.length / 3;
+      var topPos = topGeo.attributes.position.array;
+      var topIdx = topGeo.index ? topGeo.index.array : null;
+      for (var k = 0; k < topPos.length; k += 3) { positions.push(topPos[k], topPos[k+1] + cylH / 2, topPos[k+2]); }
+      if (topIdx) { for (var l = 0; l < topIdx.length; l++) indices.push(topIdx[l] + offset); }
+      offset += topPos.length / 3;
+      var botPos = botGeo.attributes.position.array;
+      var botIdx = botGeo.index ? botGeo.index.array : null;
+      for (var m = 0; m < botPos.length; m += 3) { positions.push(botPos[m], -(botPos[m+1]) - cylH / 2, botPos[m+2]); }
+      if (botIdx) { for (var n = 0; n < botIdx.length; n++) indices.push(botIdx[n] + offset); }
+      merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      merged.setIndex(indices);
+      merged.computeVertexNormals();
+      return merged;
+    },
+
+    _starGeometry: function (w, bevel) {
+      var shape = new THREE.Shape();
+      var outerR = w / 2, innerR = outerR * 0.4, points = 5;
+      for (var i = 0; i < points * 2; i++) {
+        var r = (i % 2 === 0) ? outerR : innerR;
+        var a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+        var x = Math.cos(a) * r, y = Math.sin(a) * r;
+        if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      var extr = { depth: w / 4, bevelEnabled: bevel > 0, bevelThickness: bevel || 0, bevelSize: bevel || 0, bevelSegments: 2 };
+      var geo = new THREE.ExtrudeGeometry(shape, extr);
+      geo.center();
+      return geo;
+    },
+
+    _crossGeometry: function (w, bevel) {
+      var shape = new THREE.Shape();
+      var s = w / 3, hw = w / 2;
+      shape.moveTo(-s, -hw); shape.lineTo(s, -hw); shape.lineTo(s, -s);
+      shape.lineTo(hw, -s); shape.lineTo(hw, s); shape.lineTo(s, s);
+      shape.lineTo(s, hw); shape.lineTo(-s, hw); shape.lineTo(-s, s);
+      shape.lineTo(-hw, s); shape.lineTo(-hw, -s); shape.lineTo(-s, -s);
+      shape.closePath();
+      var extr = { depth: w / 4, bevelEnabled: bevel > 0, bevelThickness: bevel || 0, bevelSize: bevel || 0, bevelSegments: 2 };
+      var geo = new THREE.ExtrudeGeometry(shape, extr);
+      geo.center();
+      return geo;
+    },
+
+    _gearGeometry: function (w, bevel) {
+      var shape = new THREE.Shape();
+      var teeth = 12, outerR = w / 2, innerR = outerR * 0.85, holeR = outerR * 0.3;
+      for (var i = 0; i < teeth * 2; i++) {
+        var r = (i % 2 === 0) ? outerR : innerR;
+        var a = (i / (teeth * 2)) * Math.PI * 2;
+        var x = Math.cos(a) * r, y = Math.sin(a) * r;
+        if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      var hole = new THREE.Path();
+      hole.absarc(0, 0, holeR, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+      var extr = { depth: w / 4, bevelEnabled: bevel > 0, bevelThickness: bevel || 0, bevelSize: bevel || 0, bevelSegments: 2 };
+      var geo = new THREE.ExtrudeGeometry(shape, extr);
+      geo.center();
+      return geo;
+    },
+
+    _tetraGeometry: function (w) {
+      var s = w / 2;
+      var geo = new THREE.BufferGeometry();
+      var vertices = new Float32Array([
+        s, s, s, -s, -s, s, -s, s, -s,
+        s, s, s, -s, s, -s, s, -s, -s,
+        s, s, s, s, -s, -s, -s, -s, s,
+        -s, -s, s, s, -s, -s, -s, s, -s
+      ]);
+      geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geo.computeVertexNormals();
+      return geo;
+    },
+
+    _octaGeometry: function (w) {
+      var s = w / 2;
+      var geo = new THREE.BufferGeometry();
+      var vertices = new Float32Array([
+        s, 0, 0, 0, s, 0, 0, 0, s,
+        s, 0, 0, 0, 0, s, 0, -s, 0,
+        s, 0, 0, 0, -s, 0, 0, 0, -s,
+        s, 0, 0, 0, 0, -s, 0, s, 0,
+        -s, 0, 0, 0, s, 0, 0, 0, -s,
+        -s, 0, 0, 0, 0, -s, 0, -s, 0,
+        -s, 0, 0, 0, -s, 0, 0, 0, s,
+        -s, 0, 0, 0, 0, s, 0, s, 0
+      ]);
+      geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geo.computeVertexNormals();
+      return geo;
+    },
+
+    _arrowGeometry: function (w) {
+      var shape = new THREE.Shape();
+      var hw = w / 2, s = w / 5;
+      shape.moveTo(-hw, -s / 2); shape.lineTo(s, -s / 2);
+      shape.lineTo(s, -hw / 2); shape.lineTo(hw, 0);
+      shape.lineTo(s, hw / 2); shape.lineTo(s, s / 2);
+      shape.lineTo(-hw, s / 2); shape.closePath();
+      var geo = new THREE.ExtrudeGeometry(shape, { depth: w / 4, bevelEnabled: false });
+      geo.center();
+      return geo;
+    },
+
+    _springGeometry: function (w, h) {
+      var r = w / 3, tube = Math.max(1, w / 10);
+      var seg = global.ForgeCAD.compat.getSegments(40);
+      return new THREE.TorusKnotGeometry(r, tube, Math.max(20, seg), Math.max(8, seg / 3), 2, 3);
+    },
+
+    _addTextShapePrompt: function () {
+      var self = this;
+      var html = '<div style="padding:16px;">';
+      html += '<p style="margin-bottom:12px;color:#9aa3b2;">Enter text to add as a 3D object:</p>';
+      html += '<input type="text" id="text-input-field" value="Hello" maxlength="20" style="width:100%;padding:8px 12px;font-size:16px;background:#161b25;color:#e4e7ec;border:1px solid #353f4f;border-radius:4px;margin-bottom:12px;" placeholder="Enter text...">';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<button class="tb-btn" id="text-cancel" style="flex:1;">Cancel</button>';
+      html += '<button class="tb-btn primary" id="text-add" style="flex:1;">Add Text</button>';
+      html += '</div></div>';
+      global.ForgeCAD.ui.modal('Add Text', html);
+      var input = document.getElementById('text-input-field');
+      if (input) { input.focus(); input.select(); }
+      document.getElementById('text-cancel').addEventListener('click', function () { global.ForgeCAD.ui.modalClose(); });
+      document.getElementById('text-add').addEventListener('click', function () {
+        var text = (input && input.value) ? input.value.trim() : 'Text';
+        if (!text) text = 'Text';
+        global.ForgeCAD.ui.modalClose();
+        self._addTextShape(text);
+      });
+      if (input) {
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') { ev.preventDefault(); document.getElementById('text-add').click(); }
+        });
+      }
+    },
+
+    _rebuildTextGeometry: function (obj) {
+      var self = this;
+      if (!THREE.FontLoader) return;
+      var fontUrl = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/fonts/helvetiker_regular.typeface.json';
+      new THREE.FontLoader().load(fontUrl, function (font) {
+        var seg = global.ForgeCAD.compat.getSegments(6);
+        var geo = new THREE.TextGeometry(obj.userData.text || 'Text', {
+          font: font, size: 12, height: 3, curveSegments: Math.max(2, seg / 4), bevelEnabled: false
+        });
+        geo.center();
+        obj.geometry.dispose();
+        obj.geometry = geo;
+        self._updateSelectionVisual();
+        self._refreshPropertyValues();
+      });
     },
 
     _addTextShape: function (text) {
