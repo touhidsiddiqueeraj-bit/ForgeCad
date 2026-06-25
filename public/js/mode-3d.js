@@ -669,6 +669,10 @@
       html += this._shapeBtn('cylinder', '⬭', 'Cylinder');
       html += this._shapeBtn('cone', '▲', 'Cone');
       html += this._shapeBtn('torus', '◯', 'Torus');
+      html += this._shapeBtn('pyramid', ' pyramid', 'Pyramid');
+      html += this._shapeBtn('prism', ' prism', 'Prism');
+      html += this._shapeBtn('hemisphere', ' hemisphere', 'Half-Sphere');
+      html += this._shapeBtn('capsule', ' capsule', 'Capsule');
       html += '</div>';
       html += '<div class="shape-section-label">Specialty</div>';
       html += '<div class="shape-grid">';
@@ -678,6 +682,29 @@
       html += this._shapeBtn('polygon', '⬠', 'Polygon');
       html += this._shapeBtn('tube', '⌭', 'Tube');
       html += this._shapeBtn('heart', '♥', 'Heart');
+      html += this._shapeBtn('star', '★', 'Star');
+      html += this._shapeBtn('cross', '✚', 'Cross');
+      html += this._shapeBtn('gear', '⚙', 'Gear');
+      html += this._shapeBtn('tetra', ' tetra', 'Tetra');
+      html += this._shapeBtn('octa', ' octa', 'Octa');
+      html += this._shapeBtn('arrow', '→', 'Arrow');
+      html += this._shapeBtn('spring', ' spring', 'Spring');
+      html += '</div>';
+      html += '<div class="shape-section-label">Measure</div>';
+      html += '<div style="padding:8px 4px;">';
+      html += '<button class="tb-btn" id="ruler-btn" style="width:100%;margin-bottom:6px;">📏 Ruler (click 2 points)</button>';
+      html += '<button class="tb-btn" id="measure-btn" style="width:100%;margin-bottom:6px;">📐 Measure Object</button>';
+      html += '</div>';
+      html += '<div class="shape-section-label">Tools</div>';
+      html += '<div style="padding:8px 4px;">';
+      html += '<div style="display:flex;gap:4px;margin-bottom:6px;">';
+      html += '<button class="tb-btn" id="align-btn" style="flex:1;">↔ Align</button>';
+      html += '<button class="tb-btn" id="mirror-btn" style="flex:1;"> Mir</button>';
+      html += '</div>';
+      html += '<div style="display:flex;gap:4px;">';
+      html += '<button class="tb-btn" id="snap-btn" style="flex:1;">Snap: ' + (this.snapEnabled ? 'ON' : 'OFF') + '</button>';
+      html += '<button class="tb-btn" id="grid-btn" style="flex:1;">Grid</button>';
+      html += '</div>';
       html += '</div>';
       html += '<div class="shape-section-label">Holes</div>';
       html += '<div style="padding:8px 4px;">';
@@ -695,6 +722,21 @@
           else toggle.className = toggle.className.replace(/\bprimary\b/g, '').trim();
         });
       }
+      var rulerBtn = document.getElementById('ruler-btn');
+      if (rulerBtn) rulerBtn.addEventListener('click', function () { self.startRuler(); });
+      var measureBtn = document.getElementById('measure-btn');
+      if (measureBtn) measureBtn.addEventListener('click', function () { self.measureSelected(); });
+      var alignBtn = document.getElementById('align-btn');
+      if (alignBtn) alignBtn.addEventListener('click', function () { self.alignSelected(); });
+      var mirrorBtn = document.getElementById('mirror-btn');
+      if (mirrorBtn) mirrorBtn.addEventListener('click', function () { self.mirrorSelected(); });
+      var snapBtn = document.getElementById('snap-btn');
+      if (snapBtn) snapBtn.addEventListener('click', function () {
+        self.snapEnabled = !self.snapEnabled;
+        snapBtn.innerHTML = 'Snap: ' + (self.snapEnabled ? 'ON' : 'OFF');
+      });
+      var gridBtn = document.getElementById('grid-btn');
+      if (gridBtn) gridBtn.addEventListener('click', function () { self.toggleGrid(); });
     },
 
     _shapeBtn: function (shape, glyph, label) {
