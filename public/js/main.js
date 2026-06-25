@@ -24,9 +24,12 @@
       if (global.ForgeCAD.storage) {
         global.ForgeCAD.storage.init(function (ok) {
           if (ok) console.log('[ForgeCAD] IndexedDB initialized');
-          // Try to load autosave on startup
           self._tryAutoLoad();
         });
+      }
+      // Initialize Firebase sync
+      if (global.ForgeCAD.sync) {
+        global.ForgeCAD.sync.init();
       }
       // Initialize modes (3D needs WebGL which we check inside)
       if (global.ForgeCAD.mode3D) global.ForgeCAD.mode3D.init();
@@ -43,6 +46,7 @@
       this._bindCircuitsToolbar();
       this._bindMultiSelectToggle();
       this._bindPanelCollapse();
+      this._bindAuth();
       this._startAutoSave();
       // Apply mode
       this.setMode('3d');
@@ -116,9 +120,24 @@
           return;
         }
         var html = '';
-        // Header with stats + Save current button
+        // Cloud sync section
+        var loggedIn = global.ForgeCAD.sync && global.ForgeCAD.sync.isLoggedIn();
+        html += '<div style="background:rgba(59,130,246,0.1);border:1px solid #3b82f6;border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
+        if (loggedIn) {
+          var userName = global.ForgeCAD.sync.user.displayName || global.ForgeCAD.sync.user.email || 'user';
+          html += '<span style="font-size:12px;color:#3b82f6;">☁️ Cloud: ' + userName.substring(0, 20) + '</span>';
+          html += '<div>';
+          html += '<button class="tb-btn primary" id="proj-cloud-save" style="font-size:11px;padding:4px 8px;margin-right:4px;">☁ Save to Cloud</button>';
+          html += '<button class="tb-btn" id="proj-cloud-list" style="font-size:11px;padding:4px 8px;">☁ Cloud Projects</button>';
+          html += '</div>';
+        } else {
+          html += '<span style="font-size:12px;color:#6b7280;">☁️ Cloud sync available — sign in to sync across devices</span>';
+          html += '<button class="tb-btn" id="proj-cloud-signin" style="font-size:11px;padding:4px 8px;">Sign In</button>';
+        }
+        html += '</div>';
+        // Local projects header
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-        html += '<strong>' + (list.length) + ' saved project' + (list.length !== 1 ? 's' : '') + '</strong>';
+        html += '<strong>Local: ' + (list.length) + ' project' + (list.length !== 1 ? 's' : '') + '</strong>';
         html += '<button class="tb-btn primary" id="proj-save-current" style="font-size:12px;">Save Current Scene</button>';
         html += '</div>';
         if (list.length === 0) {
@@ -156,6 +175,17 @@
         var saveBtn = document.getElementById('proj-save-current');
         if (saveBtn) saveBtn.addEventListener('click', function () { self._saveCurrentToProjects(); });
 
+        // Cloud sync buttons
+        var cloudSaveBtn = document.getElementById('proj-cloud-save');
+        if (cloudSaveBtn) cloudSaveBtn.addEventListener('click', function () { self._saveToCloud(); });
+        var cloudListBtn = document.getElementById('proj-cloud-list');
+        if (cloudListBtn) cloudListBtn.addEventListener('click', function () { self._showCloudProjects(); });
+        var cloudSignInBtn = document.getElementById('proj-cloud-signin');
+        if (cloudSignInBtn) cloudSignInBtn.addEventListener('click', function () {
+          global.ForgeCAD.ui.modalClose();
+          setTimeout(function () { global.ForgeCAD.sync.showAuthModal(); }, 200);
+        });
+
         var loadBtns = document.querySelectorAll('.proj-load');
         for (var j = 0; j < loadBtns.length; j++) {
           loadBtns[j].addEventListener('click', function (ev) {
@@ -189,6 +219,100 @@
               }
               statsEl.textContent = s;
             }
+          });
+        }
+      });
+    },
+
+    _saveToCloud: function () {
+      var self = this;
+      var name = document.getElementById('proj-name').value || 'Untitled Project';
+      var data;
+      if (this.currentMode === '3d') data = global.ForgeCAD.mode3D.serialize();
+      else data = global.ForgeCAD.modeCircuits.serialize();
+      data.name = name;
+      data.timestamp = Date.now();
+      global.ForgeCAD.sync.saveToCloud(data, function (err, cloudId) {
+        if (!err) {
+          // Store cloudId so future saves update the same project
+          data.cloudId = cloudId;
+        }
+      });
+    },
+
+    _showCloudProjects: function () {
+      var self = this;
+      global.ForgeCAD.ui.status('Loading cloud projects...');
+      global.ForgeCAD.sync.listCloudProjects(function (err, projects) {
+        if (err) {
+          global.ForgeCAD.ui.toast('Cloud load failed: ' + err.message);
+          return;
+        }
+        global.ForgeCAD.ui.status('Ready');
+        var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+        html += '<strong>☁️ Cloud: ' + projects.length + ' project' + (projects.length !== 1 ? 's' : '') + '</strong>';
+        html += '<button class="tb-btn" id="cloud-back" style="font-size:12px;">← Back to Local</button>';
+        html += '</div>';
+        if (projects.length === 0) {
+          html += '<div style="text-align:center;padding:24px;color:#6b7280;">No cloud projects yet.<br>Click "☁ Save to Cloud" to upload your work.</div>';
+        } else {
+          html += '<div style="max-height:50vh;overflow-y:auto;border:1px solid #353f4f;border-radius:4px;">';
+          for (var i = 0; i < projects.length; i++) {
+            var p = projects[i];
+            html += '<div class="project-item" style="display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid #2a3340;gap:12px;">';
+            var icon = p.mode === 'circuits' ? '⚡' : '⬢';
+            html += '<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:#2a3340;border-radius:4px;font-size:24px;">' + icon + '</div>';
+            html += '<div style="flex:1;min-width:0;">';
+            html += '<div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(p.name || 'Untitled') + '</div>';
+            html += '<div style="font-size:11px;color:#6b7280;margin-top:2px;">' + (p.mode === 'circuits' ? 'Circuits' : '3D Design') + ' · ' + global.ForgeCAD.storage.formatDate(p.savedAt) + '</div>';
+            html += '</div>';
+            html += '<button class="tb-btn cloud-load" data-cid="' + p.cloudId + '" style="font-size:11px;padding:4px 8px;">Load</button>';
+            html += '<button class="tb-btn cloud-delete" data-cid="' + p.cloudId + '" style="font-size:11px;padding:4px 8px;color:#e74c3c;">Delete</button>';
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+        global.ForgeCAD.ui.modal('☁️ Cloud Projects', html);
+
+        document.getElementById('cloud-back').addEventListener('click', function () {
+          global.ForgeCAD.ui.modalClose();
+          setTimeout(function () { self.showProjectsModal(); }, 200);
+        });
+        var loadBtns = document.querySelectorAll('.cloud-load');
+        for (var j = 0; j < loadBtns.length; j++) {
+          loadBtns[j].addEventListener('click', function (ev) {
+            var cid = ev.currentTarget.getAttribute('data-cid');
+            global.ForgeCAD.sync.loadFromCloud(cid, function (err, data) {
+              if (err || !data) {
+                global.ForgeCAD.ui.toast('Cloud load failed: ' + (err ? err.message : 'not found'));
+                return;
+              }
+              if (data.mode === 'circuits') {
+                self.setMode('circuits');
+                global.ForgeCAD.modeCircuits.deserialize(data);
+              } else {
+                self.setMode('3d');
+                global.ForgeCAD.mode3D.deserialize(data);
+              }
+              document.getElementById('proj-name').value = data.name || 'Untitled';
+              global.ForgeCAD.ui.modalClose();
+              global.ForgeCAD.ui.toast('Loaded from cloud: ' + data.name);
+            });
+          });
+        }
+        var delBtns = document.querySelectorAll('.cloud-delete');
+        for (var k = 0; k < delBtns.length; k++) {
+          delBtns[k].addEventListener('click', function (ev) {
+            var cid = ev.currentTarget.getAttribute('data-cid');
+            global.ForgeCAD.ui.confirm('Delete this cloud project?', function () {
+              global.ForgeCAD.sync.deleteFromCloud(cid, function (err) {
+                if (err) global.ForgeCAD.ui.toast('Delete failed: ' + err.message);
+                else {
+                  global.ForgeCAD.ui.toast('Deleted from cloud');
+                  self._showCloudProjects();
+                }
+              });
+            });
           });
         }
       });
@@ -546,6 +670,27 @@
           if (global.ForgeCAD.mode3D) global.ForgeCAD.mode3D._resizeRenderer();
         });
       }
+    },
+
+    _bindAuth: function () {
+      var self = this;
+      var btn = document.getElementById('btn-auth');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        if (global.ForgeCAD.sync && global.ForgeCAD.sync.isLoggedIn()) {
+          // Logged in — show account menu
+          global.ForgeCAD.ui.confirm('Sign out of cloud sync?', function () {
+            global.ForgeCAD.sync.signOut();
+          });
+        } else {
+          // Not logged in — show login modal
+          if (global.ForgeCAD.sync) {
+            global.ForgeCAD.sync.showAuthModal();
+          } else {
+            global.ForgeCAD.ui.toast('Cloud sync not available');
+          }
+        }
+      });
     },
 
     _bindMobileTrigger: function () {

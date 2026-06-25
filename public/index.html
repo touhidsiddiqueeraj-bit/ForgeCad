@@ -28,6 +28,7 @@
       <input id="proj-name" type="text" value="Untitled Project" spellcheck="false">
     </div>
     <div class="topbar-actions">
+      <button class="tb-btn icon-btn" id="btn-auth" title="Sign in for cloud sync">🔒 Sign In</button>
       <button class="tb-btn" id="btn-projects" title="My projects (IndexedDB)">📁 Projects</button>
       <button class="tb-btn" id="btn-import" title="Import project (.json)">Import</button>
       <button class="tb-btn" id="btn-export-proj" title="Save project (.json)">Save</button>
@@ -191,6 +192,73 @@
 <!-- Hidden file input -->
 <input type="file" id="file-input" accept=".json,.stl,.obj" class="hidden">
 
+<!-- Firebase SDK (ES modules) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+  import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDOJ1Tjsde8n3eqKiHOCki-_MJjsFQNguU",
+    authDomain: "forgecad-d018e.firebaseapp.com",
+    projectId: "forgecad-d018e",
+    storageBucket: "forgecad-d018e.firebasestorage.app",
+    messagingSenderId: "437949771330",
+    appId: "1:437949771330:web:65fb795fb62733c5ba47db"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+
+  // Expose to global scope for non-module scripts
+  window._firebase = { app, auth, db, provider };
+  window._firebase.signInGoogle = function() {
+    return signInWithPopup(auth, provider);
+  };
+  window._firebase.signInAnon = function() {
+    return signInAnonymously(auth);
+  };
+  window._firebase.signOut = function() {
+    return signOut(auth);
+  };
+  window._firebase.onAuth = function(cb) {
+    return onAuthStateChanged(auth, cb);
+  };
+  window._firebase.saveCloudProject = async function(userId, projectData) {
+    const ref = doc(collection(db, 'users', userId, 'projects'));
+    await setDoc(ref, { ...projectData, cloudId: ref.id, savedAt: Date.now() });
+    return ref.id;
+  };
+  window._firebase.updateCloudProject = async function(userId, cloudId, projectData) {
+    const ref = doc(db, 'users', userId, 'projects', cloudId);
+    await setDoc(ref, { ...projectData, savedAt: Date.now() }, { merge: true });
+    return cloudId;
+  };
+  window._firebase.listCloudProjects = async function(userId) {
+    const q = query(collection(db, 'users', userId, 'projects'));
+    const snap = await getDocs(q);
+    var result = [];
+    snap.forEach(function(d) {
+      var data = d.data();
+      result.push({ cloudId: d.id, name: data.name, mode: data.mode, savedAt: data.savedAt, thumbnail: data.thumbnail, data: data });
+    });
+    return result;
+  };
+  window._firebase.getCloudProject = async function(userId, cloudId) {
+    const ref = doc(db, 'users', userId, 'projects', cloudId);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  };
+  window._firebase.deleteCloudProject = async function(userId, cloudId) {
+    const ref = doc(db, 'users', userId, 'projects', cloudId);
+    await deleteDoc(ref);
+  };
+  window._firebaseReady = true;
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
+
 <!-- Vendor scripts -->
 <script src="vendor/three.min.js"></script>
 <script src="vendor/OrbitControls.js"></script>
@@ -210,6 +278,7 @@
 <script src="js/mode-3d.js"></script>
 <script src="js/mode-circuits.js"></script>
 <script src="js/tutorial.js"></script>
+<script src="js/firebase-sync.js"></script>
 <script src="js/main.js"></script>
 
 </body>
