@@ -47,9 +47,15 @@
       this._bindMultiSelectToggle();
       this._bindPanelCollapse();
       this._bindAuth();
+      this._bindDPad();
       this._startAutoSave();
       // Apply mode
       this.setMode('3d');
+      // Poll for D-pad visibility
+      var self2 = this;
+      setInterval(function () {
+        if (self2._updateDPadVisibility) self2._updateDPadVisibility();
+      }, 500);
       // Welcome
       global.ForgeCAD.ui.status('Ready — ' + global.ForgeCAD.compat.browser + ' ' + global.ForgeCAD.compat.browserVersion + ' (' + global.ForgeCAD.compat.tier + ' tier)');
       // Touch outside dropdown to close
@@ -691,6 +697,99 @@
           }
         }
       });
+    },
+
+    _bindDPad: function () {
+      var self = this;
+      var dpad = document.getElementById('mobile-dpad');
+      if (!dpad) return;
+      var btns = dpad.querySelectorAll('.dpad-btn');
+      var moveStep = 5;
+
+      this._updateDPadVisibility = function () {
+        var isTouch = window.matchMedia('(pointer: coarse)').matches;
+        var isSmallScreen = window.matchMedia('(max-width: 768px)').matches;
+        if (!isTouch && !isSmallScreen) return;
+        var hasSelection = false;
+        if (self.currentMode === '3d') {
+          hasSelection = global.ForgeCAD.mode3D.selected.length > 0;
+        } else {
+          hasSelection = !!global.ForgeCAD.modeCircuits.selected;
+        }
+        if (hasSelection) {
+          dpad.className = dpad.className.replace(/\bhidden\b/g, '').trim();
+        } else {
+          if (dpad.className.indexOf('hidden') === -1) dpad.className += ' hidden';
+        }
+      };
+
+      var handleDir = function (dir) {
+        if (self.currentMode === '3d') {
+          var m3d = global.ForgeCAD.mode3D;
+          if (m3d.selected.length === 0) return;
+          var obj = m3d.selected[0];
+          if (dir === 'left') obj.position.x -= moveStep;
+          else if (dir === 'right') obj.position.x += moveStep;
+          else if (dir === 'up') obj.position.z -= moveStep;
+          else if (dir === 'down') obj.position.z += moveStep;
+          m3d._updateSelectionVisual();
+          m3d._refreshPropertyValues();
+        } else {
+          var mc = global.ForgeCAD.modeCircuits;
+          if (!mc.selected) return;
+          var comp = mc._findComponent(mc.selected);
+          if (!comp) return;
+          var step = mc.gridSpacing;
+          if (dir === 'left') comp.x -= step;
+          else if (dir === 'right') comp.x += step;
+          else if (dir === 'up') comp.y -= step;
+          else if (dir === 'down') comp.y += step;
+          mc._renderComponent(comp);
+          mc._showProperties(comp.id);
+        }
+      };
+
+      for (var i = 0; i < btns.length; i++) {
+        (function (btn) {
+          var dir = btn.getAttribute('data-dir');
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (dir === 'center') {
+              if (self.currentMode === '3d') {
+                global.ForgeCAD.mode3D.selected = [];
+                global.ForgeCAD.mode3D._updateSelectionVisual();
+                global.ForgeCAD.ui.clearProperties();
+              } else {
+                global.ForgeCAD.modeCircuits.selectComponent(null);
+              }
+              self._updateDPadVisibility();
+              return;
+            }
+            handleDir(dir);
+          });
+          var pressTimer = null;
+          var pressInterval = null;
+          btn.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (dir === 'center') return;
+            handleDir(dir);
+            pressTimer = setTimeout(function () {
+              pressInterval = setInterval(function () { handleDir(dir); }, 100);
+            }, 400);
+          }, { passive: false });
+          btn.addEventListener('touchend', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+            if (pressInterval) { clearInterval(pressInterval); pressInterval = null; }
+          }, { passive: false });
+          btn.addEventListener('touchcancel', function () {
+            if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+            if (pressInterval) { clearInterval(pressInterval); pressInterval = null; }
+          });
+        })(btns[i]);
+      }
     },
 
     _bindMobileTrigger: function () {

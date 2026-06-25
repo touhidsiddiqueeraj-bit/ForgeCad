@@ -974,6 +974,46 @@ canvas, svg { display: block; }
   .topbar-left > * + * { margin-left: 4px; }
 }
 
+/* Touch devices (iPad, tablets with touch) — show D-pad */
+.touch-only { display: none; }
+@media (pointer: coarse) {
+  .touch-only { display: grid; }
+  #mobile-dpad.hidden { display: none !important; }
+  #mobile-dpad {
+    position: absolute;
+    bottom: 70px;
+    left: 12px;
+    display: grid;
+    grid-template-columns: 44px 44px 44px;
+    grid-template-rows: 44px 44px 44px;
+    gap: 2px;
+    z-index: 12;
+  }
+  .dpad-btn {
+    background: rgba(30, 37, 48, 0.92);
+    color: #c8cdd6;
+    border: 1px solid #353f4f;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  .dpad-btn:active {
+    background: #3b82f6;
+    color: #fff;
+  }
+  .dpad-up { grid-column: 2; grid-row: 1; }
+  .dpad-left { grid-column: 1; grid-row: 2; }
+  .dpad-center { grid-column: 2; grid-row: 2; background: rgba(59,130,246,0.3); }
+  .dpad-right { grid-column: 3; grid-row: 2; }
+  .dpad-down { grid-column: 2; grid-row: 3; }
+}
+
 /* Touch device tweaks */
 @media (pointer: coarse) {
   .shape-btn { padding: 14px 6px; }
