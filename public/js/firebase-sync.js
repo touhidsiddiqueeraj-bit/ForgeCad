@@ -55,7 +55,8 @@
           global.ForgeCAD.ui.toast('Signed in as ' + (result.user.displayName || 'user'));
         })
         .catch(function (err) {
-          global.ForgeCAD.ui.toast('Sign in failed: ' + err.message);
+          console.error('[Firebase] Google sign-in error:', err);
+          self._showAuthError(err);
         });
     },
 
@@ -73,8 +74,48 @@
           global.ForgeCAD.ui.toast('Signed in anonymously');
         })
         .catch(function (err) {
-          global.ForgeCAD.ui.toast('Sign in failed: ' + err.message);
+          console.error('[Firebase] Anonymous sign-in error:', err);
+          self._showAuthError(err);
         });
+    },
+
+    _showAuthError: function (err) {
+      var msg = err.message || 'Unknown error';
+      var code = err.code || '';
+      var html = '<div style="padding:20px;">';
+      html += '<div style="font-size:32px;margin-bottom:12px;">⚠️</div>';
+      html += '<h3 style="margin-bottom:8px;">Authentication Failed</h3>';
+      html += '<p style="color:#e74c3c;margin-bottom:16px;font-size:13px;font-family:monospace;">' + code + ': ' + msg + '</p>';
+      if (code.indexOf('configuration-not-found') !== -1 || msg.indexOf('CONFIGURATION_NOT_FOUND') !== -1) {
+        html += '<div style="background:rgba(231,76,60,0.1);border:1px solid #e74c3c;border-radius:6px;padding:12px;margin-bottom:16px;">';
+        html += '<p style="font-weight:600;margin-bottom:8px;">Firebase Auth is not enabled yet.</p>';
+        html += '<p style="font-size:12px;line-height:1.6;color:#9aa3b2;">To enable cloud sync, you need to configure your Firebase project:</p>';
+        html += '<ol style="font-size:12px;line-height:1.8;color:#9aa3b2;margin:8px 0 8px 20px;">';
+        html += '<li>Go to <a href="https://console.firebase.google.com/project/forgecad-d018e/authentication" target="_blank" style="color:#3b82f6;">Firebase Console → Authentication</a></li>';
+        html += '<li>Click <strong>Get Started</strong> to enable Authentication</li>';
+        html += '<li>Under <strong>Sign-in method</strong>, enable <strong>Google</strong> and <strong>Anonymous</strong></li>';
+        html += '<li>Under <strong>Settings → Authorized domains</strong>, add your domain (e.g. <code style="background:#161b25;padding:2px 4px;border-radius:2px;">preview-*.space-z.ai</code>)</li>';
+        html += '<li>Refresh this page and try again</li>';
+        html += '</ol>';
+        html += '</div>';
+        html += '<p style="font-size:12px;color:#6b7280;">In the meantime, you can still use local storage (IndexedDB) to save projects to this browser.</p>';
+      } else if (code.indexOf('popup-blocked') !== -1 || code.indexOf('popup-closed') !== -1) {
+        html += '<p style="font-size:13px;color:#9aa3b2;">The sign-in popup was blocked or closed. Please allow popups for this site and try again.</p>';
+      } else if (code.indexOf('unauthorized-domain') !== -1) {
+        html += '<div style="background:rgba(231,76,60,0.1);border:1px solid #e74c3c;border-radius:6px;padding:12px;margin-bottom:16px;">';
+        html += '<p style="font-weight:600;margin-bottom:8px;">Domain not authorized</p>';
+        html += '<p style="font-size:12px;color:#9aa3b2;">This domain isn\'t in the authorized list. Go to Firebase Console → Authentication → Settings → Authorized domains and add:</p>';
+        html += '<p style="font-family:monospace;font-size:12px;background:#161b25;padding:8px;border-radius:4px;margin-top:8px;">' + window.location.hostname + '</p>';
+        html += '</div>';
+      } else {
+        html += '<p style="font-size:13px;color:#9aa3b2;">' + msg + '</p>';
+      }
+      html += '<button class="tb-btn primary" id="auth-error-close" style="width:100%;padding:10px;margin-top:12px;">OK</button>';
+      html += '</div>';
+      global.ForgeCAD.ui.modal('Authentication Error', html);
+      var closeBtn = document.getElementById('auth-error-close');
+      if (closeBtn) closeBtn.addEventListener('click', function () { global.ForgeCAD.ui.modalClose(); });
+      global.ForgeCAD.ui.status('Ready');
     },
 
     signOut: function () {

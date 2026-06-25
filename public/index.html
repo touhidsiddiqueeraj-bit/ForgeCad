@@ -194,69 +194,63 @@
 
 <!-- Firebase SDK (ES modules) -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
-  import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+  try {
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js");
+    const { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js");
+    const { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query } = await import("https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js");
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyDOJ1Tjsde8n3eqKiHOCki-_MJjsFQNguU",
-    authDomain: "forgecad-d018e.firebaseapp.com",
-    projectId: "forgecad-d018e",
-    storageBucket: "forgecad-d018e.firebasestorage.app",
-    messagingSenderId: "437949771330",
-    appId: "1:437949771330:web:65fb795fb62733c5ba47db"
-  };
+    const firebaseConfig = {
+      apiKey: "AIzaSyDOJ1Tjsde8n3eqKiHOCki-_MJjsFQNguU",
+      authDomain: "forgecad-d018e.firebaseapp.com",
+      projectId: "forgecad-d018e",
+      storageBucket: "forgecad-d018e.firebasestorage.app",
+      messagingSenderId: "437949771330",
+      appId: "1:437949771330:web:65fb795fb62733c5ba47db"
+    };
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-  const provider = new GoogleAuthProvider();
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
 
-  // Expose to global scope for non-module scripts
-  window._firebase = { app, auth, db, provider };
-  window._firebase.signInGoogle = function() {
-    return signInWithPopup(auth, provider);
-  };
-  window._firebase.signInAnon = function() {
-    return signInAnonymously(auth);
-  };
-  window._firebase.signOut = function() {
-    return signOut(auth);
-  };
-  window._firebase.onAuth = function(cb) {
-    return onAuthStateChanged(auth, cb);
-  };
-  window._firebase.saveCloudProject = async function(userId, projectData) {
-    const ref = doc(collection(db, 'users', userId, 'projects'));
-    await setDoc(ref, { ...projectData, cloudId: ref.id, savedAt: Date.now() });
-    return ref.id;
-  };
-  window._firebase.updateCloudProject = async function(userId, cloudId, projectData) {
-    const ref = doc(db, 'users', userId, 'projects', cloudId);
-    await setDoc(ref, { ...projectData, savedAt: Date.now() }, { merge: true });
-    return cloudId;
-  };
-  window._firebase.listCloudProjects = async function(userId) {
-    const q = query(collection(db, 'users', userId, 'projects'));
-    const snap = await getDocs(q);
-    var result = [];
-    snap.forEach(function(d) {
-      var data = d.data();
-      result.push({ cloudId: d.id, name: data.name, mode: data.mode, savedAt: data.savedAt, thumbnail: data.thumbnail, data: data });
-    });
-    return result;
-  };
-  window._firebase.getCloudProject = async function(userId, cloudId) {
-    const ref = doc(db, 'users', userId, 'projects', cloudId);
-    const snap = await getDoc(ref);
-    return snap.exists() ? snap.data() : null;
-  };
-  window._firebase.deleteCloudProject = async function(userId, cloudId) {
-    const ref = doc(db, 'users', userId, 'projects', cloudId);
-    await deleteDoc(ref);
-  };
-  window._firebaseReady = true;
-  window.dispatchEvent(new Event('firebase-ready'));
+    window._firebase = { app, auth, db, provider };
+    window._firebase.signInGoogle = function() { return signInWithPopup(auth, provider); };
+    window._firebase.signInAnon = function() { return signInAnonymously(auth); };
+    window._firebase.signOut = function() { return signOut(auth); };
+    window._firebase.onAuth = function(cb) { return onAuthStateChanged(auth, cb); };
+    window._firebase.saveCloudProject = async function(userId, projectData) {
+      const ref = doc(collection(db, 'users', userId, 'projects'));
+      await setDoc(ref, { ...projectData, cloudId: ref.id, savedAt: Date.now() });
+      return ref.id;
+    };
+    window._firebase.updateCloudProject = async function(userId, cloudId, projectData) {
+      const ref = doc(db, 'users', userId, 'projects', cloudId);
+      await setDoc(ref, { ...projectData, savedAt: Date.now() }, { merge: true });
+      return cloudId;
+    };
+    window._firebase.listCloudProjects = async function(userId) {
+      const q = query(collection(db, 'users', userId, 'projects'));
+      const snap = await getDocs(q);
+      var result = [];
+      snap.forEach(function(d) { result.push({ cloudId: d.id, ...d.data(), data: d.data() }); });
+      return result;
+    };
+    window._firebase.getCloudProject = async function(userId, cloudId) {
+      const ref = doc(db, 'users', userId, 'projects', cloudId);
+      const snap = await getDoc(ref);
+      return snap.exists() ? snap.data() : null;
+    };
+    window._firebase.deleteCloudProject = async function(userId, cloudId) {
+      const ref = doc(db, 'users', userId, 'projects', cloudId);
+      await deleteDoc(ref);
+    };
+    window._firebaseReady = true;
+    window.dispatchEvent(new Event('firebase-ready'));
+  } catch (e) {
+    console.warn('[ForgeCAD] Firebase failed to load — running in local-only mode:', e.message);
+    window._firebaseReady = false;
+    window.dispatchEvent(new Event('firebase-ready'));
+  }
 </script>
 
 <!-- Vendor scripts -->
