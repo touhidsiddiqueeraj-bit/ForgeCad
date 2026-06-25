@@ -603,11 +603,70 @@
       }
       var scene = global.ForgeCAD.mode3D.scene;
       var canvas = document.getElementById('canvas-3d');
+      var m3d = global.ForgeCAD.mode3D;
+
+      // For STL/OBJ: apply boolean subtraction (holes cut from solids)
+      if (fmt === 'stl' || fmt === 'obj' || fmt === 'gltf') {
+        // Separate solids and holes
+        var solids = [];
+        var holes = [];
+        for (var i = 0; i < m3d.objects.length; i++) {
+          var obj = m3d.objects[i];
+          if (obj.userData.isGroup) {
+            // For groups, check children
+            for (var j = 0; j < obj.children.length; j++) {
+              var child = obj.children[j];
+              if (child.userData.isHole) holes.push(child);
+              else solids.push(child);
+            }
+          } else {
+            if (obj.userData.isHole) holes.push(obj);
+            else solids.push(obj);
+          }
+        }
+
+        if (holes.length > 0 && global.ForgeCAD.CSGBridge && global.CSG) {
+          // Has holes — apply CSG subtraction
+          global.ForgeCAD.ui.status('Computing boolean subtraction...');
+          var self2 = this;
+          setTimeout(function () {
+            try {
+              var resultGeo = global.ForgeCAD.CSGBridge.subtractHoles(solids, holes);
+              if (!resultGeo) {
+                global.ForgeCAD.ui.status('Ready');
+                global.ForgeCAD.ui.toast('CSG failed — exporting without holes');
+                self2._exportScene(scene, fmt, projName);
+                return;
+              }
+              // Create a temporary mesh with the result geometry
+              var tempMesh = new THREE.Mesh(resultGeo, new THREE.MeshPhongMaterial({ color: 0x3b82f6 }));
+              var tempScene = new THREE.Scene();
+              tempScene.add(tempMesh);
+              global.ForgeCAD.ui.status('Ready');
+              self2._exportScene(tempScene, fmt, projName);
+            } catch (e) {
+              global.ForgeCAD.ui.status('Ready');
+              global.ForgeCAD.ui.toast('CSG error: ' + e.message + ' — exporting without holes');
+              self2._exportScene(scene, fmt, projName);
+            }
+          }, 50); // small delay so UI updates
+          return;
+        }
+        // No holes — export directly
+        this._exportScene(scene, fmt, projName);
+        return;
+      }
+
+      if (fmt === 'png') {
+        global.ForgeCAD.exporters.exportPNG(canvas, projName + '.png');
+      }
+    },
+
+    _exportScene: function (scene, fmt, projName) {
       switch (fmt) {
         case 'stl': global.ForgeCAD.exporters.exportSTL(scene, projName + '.stl'); break;
         case 'obj': global.ForgeCAD.exporters.exportOBJ(scene, projName + '.obj'); break;
         case 'gltf': global.ForgeCAD.exporters.exportGLTF(scene, projName + '.gltf'); break;
-        case 'png': global.ForgeCAD.exporters.exportPNG(canvas, projName + '.png'); break;
       }
     },
 

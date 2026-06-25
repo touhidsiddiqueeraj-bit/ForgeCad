@@ -682,7 +682,7 @@
       html += '<div class="shape-section-label">Holes</div>';
       html += '<div style="padding:8px 4px;">';
       html += '<button class="tb-btn" id="hole-mode-toggle" style="width:100%;">' + (this.isHoleMode ? 'Hole mode: ON' : 'Hole mode: OFF') + '</button>';
-      html += '<p style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.4;">When ON, new shapes are created as holes (subtracted during export).</p>';
+      html += '<p style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.4;">When ON, new shapes are holes. Holes are subtracted from solids during STL/OBJ/GLTF export using CSG boolean operations.</p>';
       html += '</div>';
       body.innerHTML = html;
       var self = this;
