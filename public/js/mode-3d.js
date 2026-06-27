@@ -706,23 +706,38 @@
       html += '<button class="tb-btn" id="grid-btn" style="flex:1;">Grid</button>';
       html += '</div>';
       html += '</div>';
-      html += '<div class="shape-section-label">Holes</div>';
+      html += '<div class="shape-section-label">Solid / Hole</div>';
       html += '<div style="padding:8px 4px;">';
-      html += '<button class="tb-btn" id="hole-mode-toggle" style="width:100%;margin-bottom:6px;">' + (this.isHoleMode ? 'Hole mode: ON' : 'Hole mode: OFF') + '</button>';
+      html += '<div style="display:flex;gap:4px;margin-bottom:6px;">';
+      html += '<button class="tb-btn primary" id="solid-mode-btn" style="flex:1;font-size:12px;padding:8px;" title="New shapes are solid">⬢ Solid</button>';
+      html += '<button class="tb-btn" id="hole-mode-btn" style="flex:1;font-size:12px;padding:8px;" title="New shapes are holes (subtracted from solids)">⬡ Hole</button>';
+      html += '</div>';
       html += '<button class="tb-btn" id="hole-preview-btn" style="width:100%;margin-bottom:6px;">Preview Holes (CSG)</button>';
-      html += '<p style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.4;">When ON, new shapes are holes. Group a solid + hole, then click Preview to see the cut. Holes are subtracted during STL/OBJ/GLTF export.</p>';
+      html += '<p style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.4;">Add a solid, then add a hole overlapping it. Click Preview to see the cut. Export STL to get the printable part.</p>';
       html += '</div>';
       body.innerHTML = html;
       var self = this;
-      var toggle = document.getElementById('hole-mode-toggle');
-      if (toggle) {
-        toggle.addEventListener('click', function () {
-          self.isHoleMode = !self.isHoleMode;
-          toggle.innerHTML = self.isHoleMode ? 'Hole mode: ON' : 'Hole mode: OFF';
-          if (self.isHoleMode) toggle.className += ' primary';
-          else toggle.className = toggle.className.replace(/\bprimary\b/g, '').trim();
-        });
-      }
+      // Solid / Hole mode buttons
+      var solidBtn = document.getElementById('solid-mode-btn');
+      var holeBtn2 = document.getElementById('hole-mode-btn');
+      var updateModeButtons = function () {
+        if (self.isHoleMode) {
+          if (solidBtn) solidBtn.className = solidBtn.className.replace(/\bprimary\b/g, '').trim();
+          if (holeBtn2 && holeBtn2.className.indexOf('primary') === -1) holeBtn2.className += ' primary';
+        } else {
+          if (solidBtn && solidBtn.className.indexOf('primary') === -1) solidBtn.className += ' primary';
+          if (holeBtn2) holeBtn2.className = holeBtn2.className.replace(/\bprimary\b/g, '').trim();
+        }
+      };
+      if (solidBtn) solidBtn.addEventListener('click', function () {
+        self.isHoleMode = false; updateModeButtons();
+        global.ForgeCAD.ui.status('Solid mode: new shapes are solid');
+      });
+      if (holeBtn2) holeBtn2.addEventListener('click', function () {
+        self.isHoleMode = true; updateModeButtons();
+        global.ForgeCAD.ui.status('Hole mode: new shapes are holes');
+      });
+      updateModeButtons();
       var rulerBtn = document.getElementById('ruler-btn');
       if (rulerBtn) rulerBtn.addEventListener('click', function () { self.startRuler(); });
       var measureBtn = document.getElementById('measure-btn');
@@ -921,7 +936,10 @@
       html += '<div class="prop-section"><div class="prop-section-title">Appearance</div>';
       html += '<div class="prop-row"><label>Color</label><div class="color-swatch" id="current-color-swatch" style="background:' + color + ';"></div><input type="text" id="current-color-text" value="' + color + '" style="width:80px;"></div>';
       html += '<div class="prop-row"><div style="margin-left:78px;" id="color-palette"></div></div>';
-      html += '<div class="prop-row"><label>Hole</label><input type="checkbox" id="prop-is-hole" ' + (isHole ? 'checked' : '') + ' style="margin-left:0;"></div>';
+      html += '<div class="prop-row"><label>Type</label><div style="display:flex;gap:4px;flex:1;">';
+      html += '<button class="tb-btn" id="prop-solid-btn" style="flex:1;font-size:11px;padding:4px;' + (!isHole ? 'background:#3b82f6;color:#fff;border-color:#2563eb;' : '') + '">Solid</button>';
+      html += '<button class="tb-btn" id="prop-hole-btn" style="flex:1;font-size:11px;padding:4px;' + (isHole ? 'background:#6b7280;color:#fff;border-color:#4b5563;' : '') + '">Hole</button>';
+      html += '</div></div>';
       html += '</div>';
       global.ForgeCAD.ui.setPropertiesHTML(html);
 
@@ -994,13 +1012,18 @@
           if (txt) txt.value = c;
         });
       }
-      var holeChk = document.getElementById('prop-is-hole');
-      if (holeChk) {
-        holeChk.addEventListener('change', function () {
-          obj.userData.isHole = holeChk.checked;
-          self._applyHoleVisual(obj);
-        });
-      }
+      var holeSolidBtn = document.getElementById('prop-solid-btn');
+      var holeHoleBtn = document.getElementById('prop-hole-btn');
+      if (holeSolidBtn) holeSolidBtn.addEventListener('click', function () {
+        obj.userData.isHole = false;
+        self._applyHoleVisual(obj);
+        self._showProperties(obj.userData.shapeType ? obj.userData.name : obj.id);
+      });
+      if (holeHoleBtn) holeHoleBtn.addEventListener('click', function () {
+        obj.userData.isHole = true;
+        self._applyHoleVisual(obj);
+        self._showProperties(obj.userData.shapeType ? obj.userData.name : obj.id);
+      });
     },
 
     _applyProp: function (obj, key, value, mult) {
@@ -1130,12 +1153,14 @@
           return;
       }
       // Default color
-      var color = this.isHoleMode ? 0xe74c3c : 0x3b82f6;
+      var color = this.isHoleMode ? 0x6b7280 : 0x3b82f6;
       var mat = new THREE.MeshPhongMaterial({
         color: color,
         flatShading: false,
         transparent: this.isHoleMode,
-        opacity: this.isHoleMode ? 0.45 : 1.0
+        opacity: this.isHoleMode ? 0.35 : 1.0,
+        side: this.isHoleMode ? THREE.DoubleSide : THREE.FrontSide,
+        depthWrite: !this.isHoleMode
       });
       var mesh = new THREE.Mesh(geo, mat);
       mesh.userData = {
@@ -1671,12 +1696,17 @@
     _applyHoleVisual: function (obj) {
       if (!obj.material) return;
       if (obj.userData.isHole) {
+        // Tinkercad-style hole: semi-transparent gray with striped pattern
         obj.material.transparent = true;
-        obj.material.opacity = 0.45;
-        obj.material.color.setHex(0xe74c3c);
+        obj.material.opacity = 0.35;
+        obj.material.color.setHex(0x6b7280);
+        obj.material.side = THREE.DoubleSide;
+        obj.material.depthWrite = false;
       } else {
         obj.material.transparent = false;
         obj.material.opacity = 1.0;
+        obj.material.side = THREE.FrontSide;
+        obj.material.depthWrite = true;
       }
     },
 
@@ -2201,6 +2231,7 @@
       html += '<button class="tb-btn" data-tool="rotate" style="flex:1;">Rotate</button>';
       html += '<button class="tb-btn" data-tool="scale" style="flex:1;">Scale</button>';
       html += '<button class="tb-btn" data-tool="group" style="flex:1;">Group</button>';
+      html += '<button class="tb-btn" data-tool="solid" style="flex:1;">Solid</button>';
       html += '<button class="tb-btn" data-tool="hole" style="flex:1;">Hole</button>';
       html += '<button class="tb-btn" data-tool="duplicate" style="flex:1;">Dup</button>';
       html += '<button class="tb-btn" data-tool="delete" style="flex:1;">Del</button>';
@@ -2223,6 +2254,7 @@
           var t = ev.currentTarget.getAttribute('data-tool');
           if (t === 'move' || t === 'rotate' || t === 'scale') self.setTool(t);
           else if (t === 'group') self.groupSelected();
+          else if (t === 'solid') { self.isHoleMode = false; global.ForgeCAD.ui.status('Solid mode'); }
           else if (t === 'hole') self.toggleHoleSelected();
           else if (t === 'duplicate') self.duplicateSelected();
           else if (t === 'delete') self.deleteSelected();
