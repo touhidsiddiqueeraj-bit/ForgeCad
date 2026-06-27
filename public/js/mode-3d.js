@@ -708,8 +708,9 @@
       html += '</div>';
       html += '<div class="shape-section-label">Holes</div>';
       html += '<div style="padding:8px 4px;">';
-      html += '<button class="tb-btn" id="hole-mode-toggle" style="width:100%;">' + (this.isHoleMode ? 'Hole mode: ON' : 'Hole mode: OFF') + '</button>';
-      html += '<p style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.4;">When ON, new shapes are holes. Holes are subtracted from solids during STL/OBJ/GLTF export using CSG boolean operations.</p>';
+      html += '<button class="tb-btn" id="hole-mode-toggle" style="width:100%;margin-bottom:6px;">' + (this.isHoleMode ? 'Hole mode: ON' : 'Hole mode: OFF') + '</button>';
+      html += '<button class="tb-btn" id="hole-preview-btn" style="width:100%;margin-bottom:6px;">Preview Holes (CSG)</button>';
+      html += '<p style="font-size:11px;color:#6b7280;margin-top:6px;line-height:1.4;">When ON, new shapes are holes. Group a solid + hole, then click Preview to see the cut. Holes are subtracted during STL/OBJ/GLTF export.</p>';
       html += '</div>';
       body.innerHTML = html;
       var self = this;
@@ -737,6 +738,8 @@
       });
       var gridBtn = document.getElementById('grid-btn');
       if (gridBtn) gridBtn.addEventListener('click', function () { self.toggleGrid(); });
+      var holePreviewBtn = document.getElementById('hole-preview-btn');
+      if (holePreviewBtn) holePreviewBtn.addEventListener('click', function () { self.previewHoles(); });
     },
 
     _shapeBtn: function (shape, glyph, label) {
@@ -1794,6 +1797,261 @@
         global.ForgeCAD.ui.clearProperties();
         global.ForgeCAD.ui.toast('Scene cleared');
       });
+    },
+
+    /* ==================== HOLE PREVIEW (CSG) ==================== */
+    _holePreviewMesh: null,
+
+    previewHoles: function () {
+      var self = this;
+      // If preview is showing, remove it and restore originals
+      if (this._holePreviewMesh) {
+        this.scene.remove(this._holePreviewMesh);
+        this._holePreviewMesh.geometry.dispose();
+        this._holePreviewMesh.material.dispose();
+        this._holePreviewMesh = null;
+        // Restore original objects
+        for (var r = 0; r < this.objects.length; r++) {
+          this.objects[r].visible = true;
+        }
+        global.ForgeCAD.ui.status('Ready');
+        global.ForgeCAD.ui.toast('Preview cleared — originals restored');
+        return;
+      }
+
+      // Collect solids and holes
+      var solids = [], holes = [];
+      for (var i = 0; i < this.objects.length; i++) {
+        var obj = this.objects[i];
+        if (obj.userData.isGroup) {
+          for (var j = 0; j < obj.children.length; j++) {
+            if (obj.children[j].userData.isHole) holes.push(obj.children[j]);
+            else solids.push(obj.children[j]);
+          }
+        } else {
+          if (obj.userData.isHole) holes.push(obj);
+          else solids.push(obj);
+        }
+      }
+
+      if (holes.length === 0) {
+        global.ForgeCAD.ui.toast('No holes in scene. Enable Hole mode and add a shape.');
+        return;
+      }
+      if (solids.length === 0) {
+        global.ForgeCAD.ui.toast('No solid shapes to cut.');
+        return;
+      }
+
+      global.ForgeCAD.ui.status('Computing CSG preview...');
+      setTimeout(function () {
+        try {
+          self.scene.updateMatrixWorld(true);
+          var resultGeo = global.ForgeCAD.CSGBridge.subtractHoles(solids, holes);
+          if (!resultGeo) {
+            global.ForgeCAD.ui.status('Ready');
+            global.ForgeCAD.ui.toast('CSG failed');
+            return;
+          }
+          var mat = new THREE.MeshPhongMaterial({
+            color: 0x3b82f6,
+            transparent: true,
+            opacity: 0.85,
+            flatShading: false
+          });
+          self._holePreviewMesh = new THREE.Mesh(resultGeo, mat);
+          self._holePreviewMesh.renderOrder = 500;
+          self.scene.add(self._holePreviewMesh);
+
+          // Hide original objects
+          for (var k = 0; k < self.objects.length; k++) {
+            self.objects[k].visible = false;
+          }
+
+          global.ForgeCAD.ui.status('CSG preview shown — click Preview again to restore');
+          global.ForgeCAD.ui.toast('Hole preview: ' + (resultGeo.attributes.position.count / 3) + ' triangles');
+        } catch (e) {
+          global.ForgeCAD.ui.status('Ready');
+          global.ForgeCAD.ui.toast('CSG error: ' + e.message);
+        }
+      }, 50);
+    },
+
+    /* ==================== RULER & MEASURE ==================== */
+    _rulerActive: false,
+    _rulerPoint1: null,
+    _rulerLine: null,
+    _rulerLabel: null,
+
+    startRuler: function () {
+      if (this._rulerActive) { this._cancelRuler(); return; }
+      this._rulerActive = true;
+      this._rulerPoint1 = null;
+      global.ForgeCAD.ui.status('Ruler: click first point');
+      var btn = document.getElementById('ruler-btn');
+      if (btn) btn.className += ' primary';
+    },
+
+    _cancelRuler: function () {
+      this._rulerActive = false;
+      this._rulerPoint1 = null;
+      if (this._rulerLine) { this.scene.remove(this._rulerLine); this._rulerLine = null; }
+      if (this._rulerLabel) { this.scene.remove(this._rulerLabel); this._rulerLabel = null; }
+      if (this._rulerMarker) { this.scene.remove(this._rulerMarker); this._rulerMarker = null; }
+      if (this._rulerMarker2) { this.scene.remove(this._rulerMarker2); this._rulerMarker2 = null; }
+      var btn = document.getElementById('ruler-btn');
+      if (btn) btn.className = btn.className.replace(/\bprimary\b/g, '').trim();
+      global.ForgeCAD.ui.status('Ready');
+    },
+
+    _onRulerClick: function (worldPoint) {
+      if (!this._rulerPoint1) {
+        this._rulerPoint1 = worldPoint.clone();
+        var marker = new THREE.Mesh(
+          new THREE.SphereGeometry(1.5, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+        );
+        marker.position.copy(worldPoint);
+        this.scene.add(marker);
+        this._rulerMarker = marker;
+        global.ForgeCAD.ui.status('Ruler: click second point');
+      } else {
+        var p1 = this._rulerPoint1, p2 = worldPoint.clone();
+        var dist = p1.distanceTo(p2);
+        var lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        var lineMat = new THREE.LineBasicMaterial({ color: 0xfbbf24, linewidth: 2, depthTest: false });
+        this._rulerLine = new THREE.Line(lineGeo, lineMat);
+        this._rulerLine.renderOrder = 1001;
+        this.scene.add(this._rulerLine);
+        var marker2 = new THREE.Mesh(
+          new THREE.SphereGeometry(1.5, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+        );
+        marker2.position.copy(p2);
+        this.scene.add(marker2);
+        this._rulerMarker2 = marker2;
+        var mid = new THREE.Vector3().lerpVectors(p1, p2, 0.5);
+        this._rulerLabel = this._createTextSprite(dist.toFixed(1) + ' units');
+        this._rulerLabel.position.copy(mid);
+        this.scene.add(this._rulerLabel);
+        global.ForgeCAD.ui.toast('Distance: ' + dist.toFixed(2) + ' units');
+        this._rulerActive = false;
+        var btn = document.getElementById('ruler-btn');
+        if (btn) btn.className = btn.className.replace(/\bprimary\b/g, '').trim();
+      }
+    },
+
+    _createTextSprite: function (text) {
+      var canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 64;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(30, 37, 48, 0.9)';
+      ctx.fillRect(0, 0, 256, 64);
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, 254, 62);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 128, 32);
+      var texture = new THREE.CanvasTexture(canvas);
+      var mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+      var sprite = new THREE.Sprite(mat);
+      sprite.scale.set(20, 5, 1);
+      sprite.renderOrder = 1002;
+      return sprite;
+    },
+
+    measureSelected: function () {
+      if (this.selected.length === 0) { global.ForgeCAD.ui.toast('Select an object first'); return; }
+      var box = new THREE.Box3();
+      for (var i = 0; i < this.selected.length; i++) box.expandByObject(this.selected[i]);
+      var size = new THREE.Vector3(), center = new THREE.Vector3();
+      box.getSize(size); box.getCenter(center);
+      var html = '<div style="text-align:center;padding:16px;">';
+      html += '<div style="font-size:11px;text-transform:uppercase;color:#fbbf24;margin-bottom:12px;">Measurement</div>';
+      html += '<div style="font-size:13px;line-height:1.8;">';
+      html += '<div><strong>Width (X):</strong> ' + size.x.toFixed(2) + '</div>';
+      html += '<div><strong>Height (Y):</strong> ' + size.y.toFixed(2) + '</div>';
+      html += '<div><strong>Depth (Z):</strong> ' + size.z.toFixed(2) + '</div>';
+      html += '<div style="margin-top:8px;border-top:1px solid #353f4f;padding-top:8px;">';
+      html += '<div><strong>Center:</strong> (' + center.x.toFixed(1) + ', ' + center.y.toFixed(1) + ', ' + center.z.toFixed(1) + ')</div>';
+      html += '<div><strong>Volume:</strong> ' + (size.x * size.y * size.z).toFixed(1) + '</div>';
+      html += '</div></div></div>';
+      global.ForgeCAD.ui.modal('Object Dimensions', html);
+    },
+
+    /* ==================== ALIGN & MIRROR ==================== */
+    alignSelected: function () {
+      if (this.selected.length < 2) { global.ForgeCAD.ui.toast('Select 2+ objects to align'); return; }
+      var html = '<p style="margin-bottom:12px;">Align selected objects:</p>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+      var opts = ['left','center-x','right','top','center-y','bottom','front','center-z','back'];
+      var labels = {'left':'Left','center-x':'Center X','right':'Right','top':'Top','center-y':'Center Y','bottom':'Bottom','front':'Front','center-z':'Center Z','back':'Back'};
+      for (var i = 0; i < opts.length; i++) {
+        html += '<button class="tb-btn" data-align="' + opts[i] + '" style="flex:1;">' + labels[opts[i]] + '</button>';
+      }
+      html += '</div>';
+      global.ForgeCAD.ui.modal('Align Objects', html);
+      var self = this;
+      var btns = document.querySelectorAll('[data-align]');
+      for (var j = 0; j < btns.length; j++) {
+        btns[j].addEventListener('click', function (ev) {
+          self._doAlign(ev.currentTarget.getAttribute('data-align'));
+          global.ForgeCAD.ui.modalClose();
+        });
+      }
+    },
+
+    _doAlign: function (mode) {
+      if (this.selected.length < 2) return;
+      var boxes = [];
+      for (var i = 0; i < this.selected.length; i++) boxes.push(new THREE.Box3().setFromObject(this.selected[i]));
+      var ref = boxes[0];
+      for (var j = 1; j < this.selected.length; j++) {
+        var obj = this.selected[j], box = boxes[j];
+        var c = new THREE.Vector3(), rc = new THREE.Vector3();
+        box.getCenter(c); ref.getCenter(rc);
+        if (mode === 'left') obj.position.x += ref.min.x - box.min.x;
+        else if (mode === 'right') obj.position.x += ref.max.x - box.max.x;
+        else if (mode === 'center-x') obj.position.x += rc.x - c.x;
+        else if (mode === 'top') obj.position.y += ref.max.y - box.max.y;
+        else if (mode === 'bottom') obj.position.y += ref.min.y - box.min.y;
+        else if (mode === 'center-y') obj.position.y += rc.y - c.y;
+        else if (mode === 'front') obj.position.z += ref.max.z - box.max.z;
+        else if (mode === 'back') obj.position.z += ref.min.z - box.min.z;
+        else if (mode === 'center-z') obj.position.z += rc.z - c.z;
+      }
+      this._updateSelectionVisual();
+      global.ForgeCAD.ui.toast('Aligned ' + this.selected.length + ' objects');
+    },
+
+    mirrorSelected: function () {
+      if (this.selected.length === 0) { global.ForgeCAD.ui.toast('Select an object first'); return; }
+      var html = '<p style="margin-bottom:12px;">Mirror along which axis?</p>';
+      html += '<div style="display:flex;gap:8px;">';
+      html += '<button class="tb-btn primary" data-mirror="x" style="flex:1;">X</button>';
+      html += '<button class="tb-btn primary" data-mirror="y" style="flex:1;">Y</button>';
+      html += '<button class="tb-btn primary" data-mirror="z" style="flex:1;">Z</button>';
+      html += '</div>';
+      global.ForgeCAD.ui.modal('Mirror Object', html);
+      var self = this;
+      var btns = document.querySelectorAll('[data-mirror]');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('click', function (ev) {
+          var axis = ev.currentTarget.getAttribute('data-mirror');
+          for (var j = 0; j < self.selected.length; j++) {
+            if (axis === 'x') self.selected[j].scale.x = -self.selected[j].scale.x;
+            else if (axis === 'y') self.selected[j].scale.y = -self.selected[j].scale.y;
+            else if (axis === 'z') self.selected[j].scale.z = -self.selected[j].scale.z;
+          }
+          self._updateSelectionVisual();
+          self._refreshPropertyValues();
+          global.ForgeCAD.ui.modalClose();
+          global.ForgeCAD.ui.toast('Mirrored on ' + axis.toUpperCase());
+        });
+      }
     },
 
     /* ==================== SAVE / LOAD ==================== */
