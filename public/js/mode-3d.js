@@ -331,6 +331,7 @@
         self._dragging = false;
         self._activeAxis = null;
         self._shiftKey = !!(ev && ev.shiftKey);
+        self._boxSelecting = false;
 
         // Skip right-click (let context menu show)
         if (ev && ev.button !== undefined && ev.button !== 0) return;
@@ -365,9 +366,7 @@
           self._dragCandidate = hit;
           self._dragHitPoint = hit.point.clone();
 
-          // Determine drag target (mesh, or its parent group if grouped)
           var target = hit.object;
-          // Find tracked object by walking up the parent chain
           var trackedTarget = null;
           var walker = hit.object;
           while (walker) {
@@ -385,9 +384,12 @@
           self._dragStartPos = { x: target.position.x, y: target.position.y, z: target.position.z };
           self._dragWorkY = target.position.y;
 
-          // Disable orbit controls so we can drag without rotating camera.
-          // They'll be re-enabled on pointer up.
           if (self.controls) self.controls.enabled = false;
+        } else {
+          // Clicked empty space — could be box-select if user drags
+          // Disable orbit so dragging draws selection box instead of rotating
+          if (self.controls) self.controls.enabled = false;
+          self._boxSelectStart = { x: clientX, y: clientY };
         }
       };
 
@@ -397,13 +399,26 @@
         var dy = clientY - self._pointerDown.y;
         if (dx * dx + dy * dy > 16) {
           self._pointerMoved = true;
-          // Start dragging if we have either an object candidate OR an active gizmo axis
+
+          // If we have a drag candidate (clicked on object) or gizmo axis → drag object
           if ((self._dragCandidate || self._activeAxis) && !self._dragging) {
             self._dragging = true;
             global.ForgeCAD.ui.status('Dragging — ' + self.tool + (self._activeAxis ? ' (' + self._activeAxis.toUpperCase() + ' axis)' : ''));
           }
           if (self._dragging) {
             self._performDrag(clientX, clientY);
+          }
+
+          // If we clicked empty space and are moving → box-select
+          if (!self._dragCandidate && !self._activeAxis && self._boxSelectStart) {
+            if (!self._boxSelecting) {
+              self._boxSelecting = true;
+              // Clear selection unless shift is held (additive)
+              if (!self._shiftKey) {
+                self.selected = [];
+              }
+            }
+            self._updateBoxSelect(clientX, clientY);
           }
         }
       };
@@ -412,17 +427,31 @@
         if (!self._pointerDown) return;
         var wasDragging = self._dragging;
         var wasMoved = self._pointerMoved;
+        var wasBoxSelect = self._boxSelecting;
         var shiftKey = self._shiftKey;
         self._pointerDown = null;
         self._pointerMoved = false;
         self._dragCandidate = null;
         self._dragging = false;
         self._shiftKey = false;
+        self._boxSelectStart = null;
+        self._boxSelecting = false;
 
         // Re-enable orbit controls
         if (self.controls) self.controls.enabled = true;
 
-        if (!wasDragging && !wasMoved) {
+        // Remove box-select visual
+        if (self._boxSelectMesh) {
+          self.scene.remove(self._boxSelectMesh);
+          self._boxSelectMesh.geometry.dispose();
+          self._boxSelectMesh.material.dispose();
+          self._boxSelectMesh = null;
+        }
+
+        if (wasBoxSelect) {
+          // Finish box-select
+          self._finishBoxSelect(clientX, clientY);
+        } else if (!wasDragging && !wasMoved) {
           // Treat as click — select / deselect
           self._handleClickAt(clientX, clientY, shiftKey);
         } else if (wasDragging) {
@@ -601,6 +630,95 @@
       if (ev && ev.clientX !== undefined) {
         this._handleClickAt(ev.clientX, ev.clientY, ev.shiftKey);
       }
+    },
+
+    /* ==================== BOX SELECT ==================== */
+    _boxSelectMesh: null,
+    _boxSelectStart: null,
+
+    _updateBoxSelect: function (currentX, currentY) {
+      // Convert screen drag rectangle to 3D selection volume
+      var rect = this.renderer.domElement.getBoundingClientRect();
+      var x1 = this._boxSelectStart.x, y1 = this._boxSelectStart.y;
+      var x2 = currentX, y2 = currentY;
+
+      // Draw 2D overlay using a LineSegments box in screen space
+      // Simpler: just highlight objects whose screen projection falls in the rect
+      var minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+      var minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+
+      // Temporarily select objects that fall within the box
+      // (restore original selection if shift-additive)
+      var baseSelection = this._shiftKey ? this._boxSelectBaseSelection || [] : [];
+      this._boxSelectBaseSelection = baseSelection.slice();
+
+      var newSel = baseSelection.slice();
+      for (var i = 0; i < this.objects.length; i++) {
+        var obj = this.objects[i];
+        // Skip if already selected
+        if (newSel.indexOf(obj) !== -1) continue;
+
+        // Project object center to screen
+        var box = new THREE.Box3().setFromObject(obj);
+        var center = new THREE.Vector3();
+        box.getCenter(center);
+        center.project(this.camera);
+
+        var sx = (center.x * 0.5 + 0.5) * rect.width + rect.left;
+        var sy = (-center.y * 0.5 + 0.5) * rect.height + rect.top;
+
+        if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+          newSel.push(obj);
+        }
+      }
+      this.selected = newSel;
+      this._updateSelectionVisual();
+
+      // Draw selection rectangle overlay
+      if (this._boxSelectMesh) {
+        this.scene.remove(this._boxSelectMesh);
+        this._boxSelectMesh.geometry.dispose();
+        this._boxSelectMesh.material.dispose();
+      }
+      // Create a semi-transparent plane in NDC space
+      var ndcX1 = ((minX - rect.left) / rect.width) * 2 - 1;
+      var ndcY1 = -((minY - rect.top) / rect.height) * 2 + 1;
+      var ndcX2 = ((maxX - rect.left) / rect.width) * 2 - 1;
+      var ndcY2 = -((maxY - rect.top) / rect.height) * 2 + 1;
+      var w = (ndcX2 - ndcX1) / 2;
+      var h = (ndcY1 - ndcY2) / 2;
+      var cx = (ndcX1 + ndcX2) / 2;
+      var cy = (ndcY1 + ndcY2) / 2;
+
+      // Use a simple line box at the workplane level for visibility
+      // Actually, easier to use an HTML overlay div
+      var overlay = document.getElementById('box-select-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'box-select-overlay';
+        overlay.style.cssText = 'position:absolute;border:2px dashed #3b82f6;background:rgba(59,130,246,0.1);pointer-events:none;z-index:50;';
+        this.renderer.domElement.parentNode.appendChild(overlay);
+      }
+      overlay.style.left = (minX - rect.left) + 'px';
+      overlay.style.top = (minY - rect.top) + 'px';
+      overlay.style.width = (maxX - minX) + 'px';
+      overlay.style.height = (maxY - minY) + 'px';
+      overlay.style.display = 'block';
+    },
+
+    _finishBoxSelect: function (currentX, currentY) {
+      // Remove overlay
+      var overlay = document.getElementById('box-select-overlay');
+      if (overlay) overlay.style.display = 'none';
+
+      // Selection was already updated during drag — just finalize
+      if (this.selected.length > 0) {
+        this._showProperties();
+        global.ForgeCAD.ui.status('Selected ' + this.selected.length + ' objects');
+      } else {
+        global.ForgeCAD.ui.status('Ready');
+      }
+      this._boxSelectBaseSelection = null;
     },
 
     _handleClickAt: function (clientX, clientY, shiftKey) {
