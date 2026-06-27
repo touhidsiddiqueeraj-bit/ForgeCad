@@ -1855,9 +1855,8 @@
           }
           var mat = new THREE.MeshPhongMaterial({
             color: 0x3b82f6,
-            transparent: true,
-            opacity: 0.85,
-            flatShading: false
+            flatShading: false,
+            side: THREE.DoubleSide
           });
           self._holePreviewMesh = new THREE.Mesh(resultGeo, mat);
           self._holePreviewMesh.renderOrder = 500;
