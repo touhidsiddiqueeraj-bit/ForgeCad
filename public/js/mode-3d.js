@@ -995,14 +995,15 @@
         this._bboxHelper.scale.copy(size);
         this._bboxHelper.position.copy(center);
         this._bboxHelper.visible = true;
+
+        // Show dimension labels (Tinkercad-style)
+        this._showDimensionLabels(this.selected[0], box, size);
+
         // Position gizmo at selection center (only for single selection + move tool)
         if (this.selected.length === 1 && this.tool === 'move') {
           this._gizmo.position.copy(center);
-          // Scale gizmo to ~60% of the selection's largest dimension
-          // (so arrows extend just past the object edge)
           var maxDim = Math.max(size.x, size.y, size.z);
           var gizmoScale = maxDim * 0.6;
-          // Don't let it get too tiny or huge
           gizmoScale = Math.max(5, Math.min(80, gizmoScale));
           this._gizmo.scale.set(gizmoScale, gizmoScale, gizmoScale);
           this._gizmo.visible = true;
@@ -1012,11 +1013,72 @@
       } else {
         this._bboxHelper.visible = false;
         this._gizmo.visible = false;
+        this._clearDimensionLabels();
       }
       global.ForgeCAD.ui.setObjects(this.objects.length);
     },
 
     /* ==================== PROPERTIES ==================== */
+
+    _dimLabels: [],
+
+    _showDimensionLabels: function (obj, box, size) {
+      this._clearDimensionLabels();
+      if (!obj || !box) return;
+
+      var self = this;
+      var makeLabel = function (text, position, color) {
+        var sprite = self._createTextSprite(text, color || '#fbbf24');
+        sprite.position.copy(position);
+        self.scene.add(sprite);
+        self._dimLabels.push(sprite);
+      };
+
+      // Get actual dimensions (account for scale)
+      var actualSize = new THREE.Vector3();
+      box.getSize(actualSize);
+      var w = actualSize.x, h = actualSize.y, d = actualSize.z;
+      var minP = box.min, maxP = box.max;
+      var cx = (minP.x + maxP.x) / 2;
+      var cy = (minP.y + maxP.y) / 2;
+      var cz = (minP.z + maxP.z) / 2;
+
+      // Width label (X axis) — placed at bottom-front edge
+      makeLabel(w.toFixed(1), new THREE.Vector3(cx, minP.y - 3, maxP.z + 3), '#3b82f6');
+      // Height label (Y axis) — placed at right-front edge
+      makeLabel(h.toFixed(1), new THREE.Vector3(maxP.x + 3, cy, maxP.z + 3), '#22c55e');
+      // Depth label (Z axis) — placed at bottom-right edge
+      makeLabel(d.toFixed(1), new THREE.Vector3(maxP.x + 3, minP.y - 3, cz), '#ef4444');
+
+      // If rotated, show rotation angle
+      var rot = obj.rotation;
+      var hasRotation = Math.abs(rot.x) > 0.01 || Math.abs(rot.y) > 0.01 || Math.abs(rot.z) > 0.01;
+      if (hasRotation) {
+        var rotText = 'Rot: ';
+        var parts = [];
+        if (Math.abs(rot.x) > 0.01) parts.push('X ' + (rot.x * 180 / Math.PI).toFixed(0) + '°');
+        if (Math.abs(rot.y) > 0.01) parts.push('Y ' + (rot.y * 180 / Math.PI).toFixed(0) + '°');
+        if (Math.abs(rot.z) > 0.01) parts.push('Z ' + (rot.z * 180 / Math.PI).toFixed(0) + '°');
+        rotText += parts.join('  ');
+        makeLabel(rotText, new THREE.Vector3(cx, maxP.y + 5, cz), '#fbbf24');
+      }
+
+      // Position label
+      var posText = 'Pos: ' + obj.position.x.toFixed(0) + ', ' + obj.position.y.toFixed(0) + ', ' + obj.position.z.toFixed(0);
+      makeLabel(posText, new THREE.Vector3(cx, minP.y - 8, cz), '#6b7280');
+    },
+
+    _clearDimensionLabels: function () {
+      for (var i = 0; i < this._dimLabels.length; i++) {
+        this.scene.remove(this._dimLabels[i]);
+        if (this._dimLabels[i].material) {
+          if (this._dimLabels[i].material.map) this._dimLabels[i].material.map.dispose();
+          this._dimLabels[i].material.dispose();
+        }
+      }
+      this._dimLabels = [];
+    },
+
     _showProperties: function () {
       if (this.selected.length === 0) {
         global.ForgeCAD.ui.clearProperties();
@@ -2098,16 +2160,17 @@
       }
     },
 
-    _createTextSprite: function (text) {
+    _createTextSprite: function (text, color) {
+      var c = color || '#fbbf24';
       var canvas = document.createElement('canvas');
       canvas.width = 256; canvas.height = 64;
       var ctx = canvas.getContext('2d');
       ctx.fillStyle = 'rgba(30, 37, 48, 0.9)';
       ctx.fillRect(0, 0, 256, 64);
-      ctx.strokeStyle = '#fbbf24';
+      ctx.strokeStyle = c;
       ctx.lineWidth = 2;
       ctx.strokeRect(1, 1, 254, 62);
-      ctx.fillStyle = '#fbbf24';
+      ctx.fillStyle = c;
       ctx.font = 'bold 28px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
