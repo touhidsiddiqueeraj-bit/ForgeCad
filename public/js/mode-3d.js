@@ -1612,10 +1612,8 @@
       }
       var group = new THREE.Group();
       group.userData = { isGroup: true, name: 'group_' + Date.now() };
-      // Detach selected from objects group, attach to new group at same world position
       for (var i = 0; i < this.selected.length; i++) {
         var obj = this.selected[i];
-        // Preserve world transform
         var wp = new THREE.Vector3();
         var wq = new THREE.Quaternion();
         var ws = new THREE.Vector3();
@@ -1625,17 +1623,29 @@
         group.attach(obj);
       }
       this._objectsGroup.add(group);
-      // Remove the grouped children from the objects array and add the group instead
       for (var j = this.objects.length - 1; j >= 0; j--) {
         if (this.selected.indexOf(this.objects[j]) !== -1) {
           this.objects.splice(j, 1);
         }
       }
       this.objects.push(group);
-      // Replace selection with group
       this.selected = [group];
       this._updateSelectionVisual();
       global.ForgeCAD.ui.toast('Grouped ' + (group.children.length) + ' objects');
+
+      // Auto-preview holes if the group contains both solids and holes
+      var hasSolid = false, hasHole = false;
+      for (var k = 0; k < group.children.length; k++) {
+        if (group.children[k].userData.isHole) hasHole = true;
+        else hasSolid = true;
+      }
+      if (hasSolid && hasHole && global.CSG && global.ForgeCAD.CSGBridge) {
+        var self = this;
+        global.ForgeCAD.ui.status('Grouping — computing CSG preview...');
+        setTimeout(function () {
+          self.previewHoles();
+        }, 100);
+      }
     },
 
     ungroupSelected: function () {
