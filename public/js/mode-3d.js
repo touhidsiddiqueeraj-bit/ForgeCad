@@ -1027,14 +1027,18 @@
       if (!obj || !box) return;
 
       var self = this;
+      // Scale label size to object size — smaller objects get smaller labels
+      var maxDim = Math.max(size.x, size.y, size.z);
+      var labelScale = Math.max(3, Math.min(8, maxDim * 0.12));
+
       var makeLabel = function (text, position, color) {
         var sprite = self._createTextSprite(text, color || '#fbbf24');
+        sprite.scale.set(labelScale * 4, labelScale, 1);
         sprite.position.copy(position);
         self.scene.add(sprite);
         self._dimLabels.push(sprite);
       };
 
-      // Get actual dimensions (account for scale)
       var actualSize = new THREE.Vector3();
       box.getSize(actualSize);
       var w = actualSize.x, h = actualSize.y, d = actualSize.z;
@@ -1042,30 +1046,23 @@
       var cx = (minP.x + maxP.x) / 2;
       var cy = (minP.y + maxP.y) / 2;
       var cz = (minP.z + maxP.z) / 2;
+      var off = maxDim * 0.08;  // offset from object edge, proportional to size
 
-      // Width label (X axis) — placed at bottom-front edge
-      makeLabel(w.toFixed(1), new THREE.Vector3(cx, minP.y - 3, maxP.z + 3), '#3b82f6');
-      // Height label (Y axis) — placed at right-front edge
-      makeLabel(h.toFixed(1), new THREE.Vector3(maxP.x + 3, cy, maxP.z + 3), '#22c55e');
-      // Depth label (Z axis) — placed at bottom-right edge
-      makeLabel(d.toFixed(1), new THREE.Vector3(maxP.x + 3, minP.y - 3, cz), '#ef4444');
+      // Width (blue), Height (green), Depth (red) — compact single numbers
+      makeLabel(w.toFixed(0), new THREE.Vector3(cx, minP.y - off, maxP.z + off), '#3b82f6');
+      makeLabel(h.toFixed(0), new THREE.Vector3(maxP.x + off, cy, maxP.z + off), '#22c55e');
+      makeLabel(d.toFixed(0), new THREE.Vector3(maxP.x + off, minP.y - off, cz), '#ef4444');
 
-      // If rotated, show rotation angle
+      // Rotation label — only if rotated
       var rot = obj.rotation;
       var hasRotation = Math.abs(rot.x) > 0.01 || Math.abs(rot.y) > 0.01 || Math.abs(rot.z) > 0.01;
       if (hasRotation) {
-        var rotText = 'Rot: ';
         var parts = [];
-        if (Math.abs(rot.x) > 0.01) parts.push('X ' + (rot.x * 180 / Math.PI).toFixed(0) + '°');
-        if (Math.abs(rot.y) > 0.01) parts.push('Y ' + (rot.y * 180 / Math.PI).toFixed(0) + '°');
-        if (Math.abs(rot.z) > 0.01) parts.push('Z ' + (rot.z * 180 / Math.PI).toFixed(0) + '°');
-        rotText += parts.join('  ');
-        makeLabel(rotText, new THREE.Vector3(cx, maxP.y + 5, cz), '#fbbf24');
+        if (Math.abs(rot.x) > 0.01) parts.push((rot.x * 180 / Math.PI).toFixed(0) + '°');
+        if (Math.abs(rot.y) > 0.01) parts.push((rot.y * 180 / Math.PI).toFixed(0) + '°');
+        if (Math.abs(rot.z) > 0.01) parts.push((rot.z * 180 / Math.PI).toFixed(0) + '°');
+        makeLabel(parts.join(' '), new THREE.Vector3(cx, maxP.y + off, cz), '#fbbf24');
       }
-
-      // Position label
-      var posText = 'Pos: ' + obj.position.x.toFixed(0) + ', ' + obj.position.y.toFixed(0) + ', ' + obj.position.z.toFixed(0);
-      makeLabel(posText, new THREE.Vector3(cx, minP.y - 8, cz), '#6b7280');
     },
 
     _clearDimensionLabels: function () {
@@ -1106,6 +1103,19 @@
       html += '</div>';
       html += '<div class="prop-section"><div class="prop-section-title">Rotation (deg)</div>';
       html += global.ForgeCAD.ui.propRow3('Rot', [round1(r.x * 180 / Math.PI), round1(r.y * 180 / Math.PI), round1(r.z * 180 / Math.PI)], ['rx','ry','rz']);
+      // Quick angle buttons
+      html += '<div class="prop-row"><label>Quick</label><div style="display:flex;gap:2px;flex-wrap:wrap;">';
+      var angles = [15, 30, 45, 60, 90, 180];
+      var axes = ['x', 'y', 'z'];
+      for (var ai = 0; ai < axes.length; ai++) {
+        html += '<div style="display:flex;gap:1px;margin-right:4px;">';
+        html += '<span style="font-size:10px;color:#6b7280;width:12px;text-transform:uppercase;line-height:22px;">' + axes[ai] + '</span>';
+        for (var aa = 0; aa < angles.length; aa++) {
+          html += '<button class="tb-btn angle-btn" data-axis="' + axes[ai] + '" data-angle="' + angles[aa] + '" style="font-size:10px;padding:2px 5px;min-width:auto;" title="Rotate ' + angles[aa] + '° on ' + axes[ai].toUpperCase() + '">' + angles[aa] + '°</button>';
+        }
+        html += '</div>';
+      }
+      html += '</div></div>';
       html += '</div>';
       html += '<div class="prop-section"><div class="prop-section-title">Scale</div>';
       html += global.ForgeCAD.ui.propRow3('Scale', [round2(s.x), round2(s.y), round2(s.z)], ['sx','sy','sz']);
@@ -1204,6 +1214,18 @@
         self._applyHoleVisual(obj);
         self._showProperties(obj.userData.shapeType ? obj.userData.name : obj.id);
       });
+      // Quick angle buttons
+      var angleBtns = document.querySelectorAll('.angle-btn');
+      for (var ab = 0; ab < angleBtns.length; ab++) {
+        angleBtns[ab].addEventListener('click', function (ev) {
+          var axis = ev.currentTarget.getAttribute('data-axis');
+          var angle = parseFloat(ev.currentTarget.getAttribute('data-angle'));
+          var rad = angle * Math.PI / 180;
+          obj.rotation[axis] += rad;
+          self._updateSelectionVisual();
+          self._refreshPropertyValues();
+        });
+      }
     },
 
     _applyProp: function (obj, key, value, mult) {
