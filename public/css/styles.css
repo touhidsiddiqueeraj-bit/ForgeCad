@@ -1029,3 +1029,27 @@ canvas, svg { display: block; }
 @media (max-resolution: 96dpi) {
   body { font-size: 13px; }
 }
+
+/* Inline dimension/rotation label editor — floating input shown when the
+   user clicks a dimension sprite in the 3D viewport. The border + text
+   color are set inline (per-sprite) to match the label's color. */
+.inline-label-editor {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  padding: 4px 6px;
+  background: #1e2530;
+  border: 2px solid #fbbf24;
+  border-radius: 4px;
+  color: #fbbf24;
+  font: bold 13px ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  text-align: center;
+  outline: none;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.inline-label-editor:focus {
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.25), 0 4px 12px rgba(0,0,0,0.6);
+}

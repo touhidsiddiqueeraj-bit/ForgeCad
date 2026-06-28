@@ -493,6 +493,23 @@
         // Don't end on mouseleave during drag — document listeners handle it
       });
 
+      // Hover cursor for dimension labels — when the cursor is over a label
+      // sprite, show a pointer so the user knows they can click to edit.
+      // Skipped during drag/box-select to avoid thrashing the cursor.
+      dom.addEventListener('pointermove', function (ev) {
+        if (self._pointerDown) return;            // mid-drag — leave cursor alone
+        if (self._dimLabels.length === 0) {
+          if (dom.style.cursor === 'pointer') dom.style.cursor = '';
+          return;
+        }
+        var rect = dom.getBoundingClientRect();
+        self._pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        self._pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        self.raycaster.setFromCamera(self._pointer, self.camera);
+        var hits = self.raycaster.intersectObjects(self._dimLabels, false);
+        dom.style.cursor = hits.length > 0 ? 'pointer' : '';
+      });
+
       // Touch (single-finger only; multi-finger goes to OrbitControls for pinch/pan)
       // Touch fires alongside pointer events on most browsers, but we keep these
       // for old WebKit that doesn't fire pointer events.
@@ -726,6 +743,20 @@
       this._pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       this._pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       this.raycaster.setFromCamera(this._pointer, this.camera);
+
+      // FIRST: check if we clicked a floating dimension/rotation label.
+      // These labels are only shown for a single selected object, so we
+      // only need to check when there's exactly one selection. If a label
+      // is hit, we open an inline editor instead of falling through to
+      // selection logic (so the click doesn't deselect the object).
+      if (this._dimLabels.length > 0 && this.selected.length === 1) {
+        var labelHits = this.raycaster.intersectObjects(this._dimLabels, false);
+        if (labelHits.length > 0) {
+          this._openInlineLabelEditor(labelHits[0].object, clientX, clientY);
+          return;
+        }
+      }
+
       var intersects = this.raycaster.intersectObjects(this.objects, true);
       if (intersects.length > 0) {
         // Walk up to find the top-level user object (mesh or group)
@@ -1027,14 +1058,24 @@
       if (!obj || !box) return;
 
       var self = this;
-      // Scale label size to object size — smaller objects get smaller labels
+      // Scale label size to object size — smaller objects get smaller labels.
+      // Reduced from earlier (was max(3, min(8, maxDim*0.12))) — labels were
+      // taking up as much screen space as the object itself.
       var maxDim = Math.max(size.x, size.y, size.z);
-      var labelScale = Math.max(3, Math.min(8, maxDim * 0.12));
+      var labelScale = Math.max(1.5, Math.min(3, maxDim * 0.05));
 
-      var makeLabel = function (text, position, color) {
+      // color is also stored on userData so the inline editor can pick it up
+      // for its border (the canvas image isn't easily queryable).
+      var makeLabel = function (text, position, color, dimType, axis) {
         var sprite = self._createTextSprite(text, color || '#fbbf24');
-        sprite.scale.set(labelScale * 4, labelScale, 1);
+        // Narrower pill than before (was labelScale*4) — text reads fine on a
+        // 256x64 canvas even at sprite scale 6x1.5.
+        sprite.scale.set(labelScale * 3, labelScale * 0.75, 1);
         sprite.position.copy(position);
+        sprite.userData.dimType = dimType;       // 'w' | 'h' | 'd' | 'rot'
+        sprite.userData.axis = axis;             // 'x' | 'y' | 'z' (rot only)
+        sprite.userData.targetObject = obj;
+        sprite.userData.color = color || '#fbbf24';
         self.scene.add(sprite);
         self._dimLabels.push(sprite);
       };
@@ -1046,22 +1087,26 @@
       var cx = (minP.x + maxP.x) / 2;
       var cy = (minP.y + maxP.y) / 2;
       var cz = (minP.z + maxP.z) / 2;
-      var off = maxDim * 0.08;  // offset from object edge, proportional to size
+      var off = maxDim * 0.06;  // offset from object edge, proportional to size
 
-      // Width (blue), Height (green), Depth (red) — compact single numbers
-      makeLabel(w.toFixed(0), new THREE.Vector3(cx, minP.y - off, maxP.z + off), '#3b82f6');
-      makeLabel(h.toFixed(0), new THREE.Vector3(maxP.x + off, cy, maxP.z + off), '#22c55e');
-      makeLabel(d.toFixed(0), new THREE.Vector3(maxP.x + off, minP.y - off, cz), '#ef4444');
+      // Width (blue), Height (green), Depth (red) — click any to edit that dimension
+      makeLabel(w.toFixed(0), new THREE.Vector3(cx, minP.y - off, maxP.z + off), '#3b82f6', 'w');
+      makeLabel(h.toFixed(0), new THREE.Vector3(maxP.x + off, cy, maxP.z + off), '#22c55e', 'h');
+      makeLabel(d.toFixed(0), new THREE.Vector3(maxP.x + off, minP.y - off, cz), '#ef4444', 'd');
 
-      // Rotation label — only if rotated
+      // Rotation labels — one per axis with non-zero rotation, each independently editable
       var rot = obj.rotation;
-      var hasRotation = Math.abs(rot.x) > 0.01 || Math.abs(rot.y) > 0.01 || Math.abs(rot.z) > 0.01;
-      if (hasRotation) {
-        var parts = [];
-        if (Math.abs(rot.x) > 0.01) parts.push((rot.x * 180 / Math.PI).toFixed(0) + '°');
-        if (Math.abs(rot.y) > 0.01) parts.push((rot.y * 180 / Math.PI).toFixed(0) + '°');
-        if (Math.abs(rot.z) > 0.01) parts.push((rot.z * 180 / Math.PI).toFixed(0) + '°');
-        makeLabel(parts.join(' '), new THREE.Vector3(cx, maxP.y + off, cz), '#fbbf24');
+      if (Math.abs(rot.x) > 0.01) {
+        makeLabel((rot.x * 180 / Math.PI).toFixed(0) + '°',
+                  new THREE.Vector3(cx - off * 2, maxP.y + off, cz), '#fbbf24', 'rot', 'x');
+      }
+      if (Math.abs(rot.y) > 0.01) {
+        makeLabel((rot.y * 180 / Math.PI).toFixed(0) + '°',
+                  new THREE.Vector3(cx, maxP.y + off, cz), '#fbbf24', 'rot', 'y');
+      }
+      if (Math.abs(rot.z) > 0.01) {
+        makeLabel((rot.z * 180 / Math.PI).toFixed(0) + '°',
+                  new THREE.Vector3(cx + off * 2, maxP.y + off, cz), '#fbbf24', 'rot', 'z');
       }
     },
 
@@ -1074,6 +1119,92 @@
         }
       }
       this._dimLabels = [];
+    },
+
+    // Opens a small floating <input> over the clicked dimension label so the
+    // user can type a new value directly. On Enter (or blur), the value is
+    // applied to the object's dimensions or rotation. On Escape, cancelled.
+    _openInlineLabelEditor: function (sprite, clientX, clientY) {
+      var self = this;
+      var obj = sprite.userData.targetObject;
+      if (!obj) return;
+      var dimType = sprite.userData.dimType;   // 'w' | 'h' | 'd' | 'rot'
+      var axis = sprite.userData.axis;         // 'x' | 'y' | 'z' (rot only)
+      var color = sprite.userData.color || '#fbbf24';
+
+      // Compute current value to pre-fill the input with
+      var currentVal;
+      if (dimType === 'w' || dimType === 'h' || dimType === 'd') {
+        var dim = obj.userData.dimensions || { w: 20, h: 20, d: 20 };
+        currentVal = Number(dim[dimType]).toFixed(1);
+      } else if (dimType === 'rot' && axis) {
+        currentVal = (obj.rotation[axis] * 180 / Math.PI).toFixed(1);
+      } else {
+        return;
+      }
+
+      // Remove any pre-existing editor (e.g. user clicked another label while
+      // editing — though we suppress that via the input's focus, defensive)
+      var existing = document.getElementById('inline-label-editor');
+      if (existing) existing.remove();
+
+      var input = document.createElement('input');
+      input.id = 'inline-label-editor';
+      input.type = 'text';
+      input.value = currentVal;
+      input.className = 'inline-label-editor';
+      input.style.borderColor = color;
+      input.style.color = color;
+      // Position at the click point (the label's approximate screen location)
+      input.style.left = clientX + 'px';
+      input.style.top = clientY + 'px';
+      input.setAttribute('data-dim-type', dimType);
+      if (axis) input.setAttribute('data-axis', axis);
+      // Brief title for accessibility
+      var titleMap = { w: 'Width (X)', h: 'Height (Y)', d: 'Depth (Z)', rot: 'Rotation ' + (axis || '').toUpperCase() };
+      input.title = titleMap[dimType] || 'Value';
+
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+
+      var committed = false;
+      var commit = function () {
+        if (committed) return;            // guard against double-fire (blur after Enter)
+        committed = true;
+        var raw = (input.value || '').trim().replace(/[°]/g, '');
+        var v = parseFloat(raw);
+        if (!isNaN(v)) {
+          if (dimType === 'w' || dimType === 'h' || dimType === 'd') {
+            if (!obj.userData.dimensions) obj.userData.dimensions = { w: 20, h: 20, d: 20 };
+            // Clamp to a sane minimum so the object doesn't disappear
+            v = Math.max(0.5, v);
+            obj.userData.dimensions[dimType] = v;
+            self._rebuildGeometry(obj);
+          } else if (dimType === 'rot' && axis) {
+            obj.rotation[axis] = v * Math.PI / 180;
+          }
+          self._updateSelectionVisual();
+          self._refreshPropertyValues();
+          // _showProperties would rebuild the panel and is not strictly needed
+          // here — _refreshPropertyValues updates the input values without
+          // destroying focus. The dimension labels themselves are refreshed
+          // as part of _updateSelectionVisual().
+        }
+        if (input.parentNode) input.parentNode.removeChild(input);
+      };
+
+      var cancel = function () {
+        if (committed) return;
+        committed = true;
+        if (input.parentNode) input.parentNode.removeChild(input);
+      };
+
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
+      });
+      input.addEventListener('blur', commit);
     },
 
     _showProperties: function () {
